@@ -31,15 +31,27 @@ with version_file.open("w", encoding="utf-8") as f:
 
 
 build_exe_options = {
-    "excludes": ["test", "setuptools"],
+    "excludes": [
+        "test", 
+        "setuptools", 
+        "tkinter", 
+        "unittest", 
+        "pydoc", 
+        "doctest",
+        "email",
+        "http",
+        "urllib",
+        "xml",
+        "pydoc_data",
+        "distutils",
+        "lib2to3"
+    ],
     "packages": [
         "pyclashbot",
         "pyclashbot.ai",
-        "pyclashbot.detection", 
+        "pyclashbot.detection",
         "pyclashbot.config",
         "torch",
-        "torch.nn",
-        "torch.optim",
         "sklearn",
         "scipy",
         "matplotlib",
@@ -57,6 +69,8 @@ build_exe_options = {
     "include_msvcr": True,
     "zip_include_packages": "*",
     "zip_exclude_packages": "",
+    "optimize": 0,  # Don't optimize to avoid import issues
+    "silent": False,  # Show build progress
 }
 
 bdist_msi_options = {
