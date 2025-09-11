@@ -51,10 +51,8 @@ build_exe_options = {
         ROOT_DIR / "assets" / "pixel-pycb.ico",
         ROOT_DIR / "pyclashbot" / "detection" / "reference_images",
         ROOT_DIR / "pyclashbot" / "__version__",
-        # Include model directories for movement bot
-        ROOT_DIR / "models",
-        ROOT_DIR / "data",
-        ROOT_DIR / "config",
+        # Include model directories for movement bot (only if they exist)
+        *[ROOT_DIR / dir_name for dir_name in ["models", "data", "config"] if (ROOT_DIR / dir_name).exists()],
     ],
     "include_msvcr": True,
     "zip_include_packages": "*",
