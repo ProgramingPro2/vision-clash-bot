@@ -25,12 +25,31 @@ class TowerHealthDetector:
     
     def __init__(self):
         """Initialize tower health detector."""
-        # Tower health regions (normalized coordinates for 419x633 screen)
+        # Screen dimensions: 3.5" wide × 6.5" tall
+        # Tower health regions based on physical screen measurements
         self.tower_regions = {
-            'own_left': (0.1, 0.4, 0.2, 0.1),    # x, y, width, height
-            'own_right': (0.7, 0.4, 0.2, 0.1),
-            'enemy_left': (0.1, 0.1, 0.2, 0.1),
-            'enemy_right': (0.7, 0.1, 0.2, 0.1)
+            # Enemy towers: Y position 0.75-1.25" from top, X position 0.5-1.5" from side
+            'enemy_left': (0.5, 0.75, 1.0, 0.5),    # x, y, width, height (inches)
+            'enemy_right': (2.0, 0.75, 1.0, 0.5),   # x, y, width, height (inches)
+            # My towers: 3" Y difference from enemy towers
+            'own_left': (0.5, 3.75, 1.0, 0.5),      # x, y, width, height (inches)
+            'own_right': (2.0, 3.75, 1.0, 0.5)      # x, y, width, height (inches)
+        }
+        
+        # Track if towers have been damaged (health bars only appear after first damage)
+        self.towers_damaged = {
+            'enemy_left': False,
+            'enemy_right': False,
+            'own_left': False,
+            'own_right': False
+        }
+        
+        # Track initial health values (must be >100 to be valid)
+        self.initial_health = {
+            'enemy_left': None,
+            'enemy_right': None,
+            'own_left': None,
+            'own_right': None
         }
         
         # OCR configuration
@@ -78,14 +97,24 @@ class TowerHealthDetector:
         if region_name not in self.tower_regions:
             return np.array([])
         
-        x, y, w, h = self.tower_regions[region_name]
+        x_inches, y_inches, w_inches, h_inches = self.tower_regions[region_name]
         height, width = frame.shape[:2]
         
-        # Convert normalized coordinates to pixel coordinates
-        x1 = int(x * width)
-        y1 = int(y * height)
-        x2 = int((x + w) * width)
-        y2 = int((y + h) * height)
+        # Convert inch coordinates to pixel coordinates
+        # Assuming screen is 3.5" wide × 6.5" tall
+        screen_width_inches = 3.5
+        screen_height_inches = 6.5
+        
+        x1 = int((x_inches / screen_width_inches) * width)
+        y1 = int((y_inches / screen_height_inches) * height)
+        x2 = int(((x_inches + w_inches) / screen_width_inches) * width)
+        y2 = int(((y_inches + h_inches) / screen_height_inches) * height)
+        
+        # Ensure coordinates are within frame bounds
+        x1 = max(0, min(x1, width - 1))
+        y1 = max(0, min(y1, height - 1))
+        x2 = max(x1 + 1, min(x2, width))
+        y2 = max(y1 + 1, min(y2, height))
         
         return frame[y1:y2, x1:x2]
     
@@ -171,6 +200,75 @@ class TowerHealthDetector:
         
         return None
     
+    def detect_tower_health_with_logic(self, region: np.ndarray, region_name: str) -> Tuple[Optional[int], float]:
+        """
+        Detect tower health with specific logic for damaged towers and initial health validation.
+        
+        Args:
+            region: Tower region image
+            region_name: Name of the tower region
+            
+        Returns:
+            Tuple of (health_value, confidence)
+        """
+        # Health bars don't show up until first damage
+        if not self.towers_damaged[region_name]:
+            # Try to detect if tower has been damaged (health bar appears)
+            if self._detect_health_bar_presence(region):
+                self.towers_damaged[region_name] = True
+            else:
+                # No health bar yet, tower is at full health
+                return None, 0.0  # Return None to indicate no health bar visible
+        
+        # Tower has been damaged, try to read health
+        health_value, confidence = self.detect_tower_health_combined(region)
+        
+        if health_value is not None:
+            # Validate initial health (must be >100 to be valid)
+            if self.initial_health[region_name] is None:
+                if health_value > 100:
+                    self.initial_health[region_name] = health_value
+                    return health_value, confidence
+                else:
+                    # Invalid initial health, return None for this round
+                    return None, 0.0
+            else:
+                # Tower already has valid initial health, return current value
+                return health_value, confidence
+        else:
+            # No text found, assume health=0 (tower destroyed)
+            return 0, 0.8  # High confidence for destroyed tower
+    
+    def _detect_health_bar_presence(self, region: np.ndarray) -> bool:
+        """
+        Detect if a health bar is present in the region.
+        
+        Args:
+            region: Tower region image
+            
+        Returns:
+            True if health bar is detected
+        """
+        if region.size == 0:
+            return False
+        
+        # Convert to HSV for better color detection
+        hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+        
+        # Look for health bar colors (green, yellow, red)
+        health_pixels = 0
+        for color_name, (lower, upper) in self.health_bar_color_ranges.items():
+            lower = np.array(lower)
+            upper = np.array(upper)
+            mask = cv2.inRange(hsv, lower, upper)
+            health_pixels += cv2.countNonZero(mask)
+        
+        # If we find enough health bar colored pixels, health bar is present
+        total_pixels = region.shape[0] * region.shape[1]
+        health_ratio = health_pixels / total_pixels
+        
+        return health_ratio > 0.01  # 1% threshold for health bar presence
+    
     def detect_tower_health_combined(self, region: np.ndarray) -> Tuple[Optional[int], float]:
         """
         Combine health bar detection and OCR for robust health detection.
@@ -219,7 +317,7 @@ class TowerHealthDetector:
         # Detect each tower
         for region_name in self.tower_regions:
             region = self.extract_tower_region(frame, region_name)
-            health_value, confidence = self.detect_tower_health_combined(region)
+            health_value, confidence = self.detect_tower_health_with_logic(region, region_name)
             
             if health_value is not None:
                 if region_name == 'own_left':
@@ -265,12 +363,15 @@ class TowerHealthDetector:
         
         for health_value, region_name, color in health_values:
             if health_value is not None:
-                x, y, w, h = self.tower_regions[region_name]
+                x_inches, y_inches, w_inches, h_inches = self.tower_regions[region_name]
                 height, width = frame.shape[:2]
                 
-                # Convert to pixel coordinates
-                x1 = int(x * width)
-                y1 = int(y * height)
+                # Convert inch coordinates to pixel coordinates
+                screen_width_inches = 3.5
+                screen_height_inches = 6.5
+                
+                x1 = int((x_inches / screen_width_inches) * width)
+                y1 = int((y_inches / screen_height_inches) * height)
                 
                 # Draw health text
                 text = f"{health_value}%"
