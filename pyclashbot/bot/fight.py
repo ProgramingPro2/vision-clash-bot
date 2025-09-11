@@ -79,6 +79,7 @@ def do_fight_state(
     fight_mode_choosed,
     called_from_launching=False,
     recording_flag: bool = False,
+    movement_bot_mode: bool = False,
 ) -> bool:
     """Handle the entirety of a battle state (start fight, do fight, end fight)."""
 
@@ -94,13 +95,28 @@ def do_fight_state(
 
     logger.change_status("Starting fight loop")
 
+    # Run movement-based fight loop if enabled
+    if movement_bot_mode:
+        from .movement_fight import MovementFightManager
+        from ..ai.movement_based_bot import BotConfig
+        
+        config = BotConfig()
+        fight_manager = MovementFightManager(emulator, logger, config)
+        
+        if fight_manager.movement_fight_loop(recording_flag) is False:
+            logger.log("Failure in movement-based fight loop")
+            fight_manager.cleanup()
+            return False
+        
+        fight_manager.cleanup()
+    
     # Run regular fight loop if random mode not toggled
-    if not random_fight_mode and _fight_loop(emulator, logger, recording_flag) is False:
+    elif not random_fight_mode and _fight_loop(emulator, logger, recording_flag) is False:
         logger.log("Failure in fight loop")
         return False
 
     # Run random fight loop if random mode toggled
-    if random_fight_mode and _random_fight_loop(emulator, logger) is False:
+    elif random_fight_mode and _random_fight_loop(emulator, logger) is False:
         logger.log("Failure in fight loop")
         return False
 

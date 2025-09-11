@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import platform
 
 from cx_Freeze import Executable, setup
 
@@ -31,13 +32,33 @@ with version_file.open("w", encoding="utf-8") as f:
 
 build_exe_options = {
     "excludes": ["test", "setuptools"],
-    "packages": ["pyclashbot"],
+    "packages": [
+        "pyclashbot",
+        "pyclashbot.ai",
+        "pyclashbot.detection", 
+        "pyclashbot.config",
+        "torch",
+        "torch.nn",
+        "torch.optim",
+        "sklearn",
+        "scipy",
+        "matplotlib",
+        "pytesseract",
+        "cv2",
+        "numpy",
+    ],
     "include_files": [
         ROOT_DIR / "assets" / "pixel-pycb.ico",
         ROOT_DIR / "pyclashbot" / "detection" / "reference_images",
         ROOT_DIR / "pyclashbot" / "__version__",
+        # Include model directories for movement bot
+        ROOT_DIR / "models",
+        ROOT_DIR / "data",
+        ROOT_DIR / "config",
     ],
     "include_msvcr": True,
+    "zip_include_packages": "*",
+    "zip_exclude_packages": "",
 }
 
 bdist_msi_options = {
@@ -51,13 +72,21 @@ bdist_msi_options = {
     },
 }
 
+# Force Windows compilation for cross-platform building
+# This will work with Wine or when building on Windows
+base = "Win32GUI" if GUI else None
+uac_admin = True
+shortcut_name = f"{PROJECT_NAME} {VERSION}"
+shortcut_dir = "DesktopFolder"
+target_name = f"{PROJECT_NAME}.exe"
+
 exe = Executable(
     script=ENTRY_POINT,
-    base="Win32GUI" if GUI else None,
-    uac_admin=True,
-    shortcut_name=f"{PROJECT_NAME} {VERSION}",
-    shortcut_dir="DesktopFolder",
-    target_name=f"{PROJECT_NAME}.exe",
+    base=base,
+    uac_admin=uac_admin,
+    shortcut_name=shortcut_name,
+    shortcut_dir=shortcut_dir,
+    target_name=target_name,
     copyright=COPYRIGHT,
     icon=ICON_PATH,
 )

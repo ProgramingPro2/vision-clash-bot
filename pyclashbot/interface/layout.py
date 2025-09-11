@@ -14,6 +14,7 @@ from pyclashbot.interface.builder import (
     build_emulator_settings_tabs,
     build_jobs_section,
 )
+from pyclashbot.interface.movement_bot_gui import MovementBotGUI
 from pyclashbot.interface.config import DISABLE_KEYS, USER_CONFIG_KEYS
 from pyclashbot.interface.theme import THEME
 from pyclashbot.utils.versioning import __version__
@@ -107,6 +108,7 @@ def create_main_tabs():
                         sg.Tab("Jobs", create_jobs_tab(), key="-JOBS_TAB-"),
                         sg.Tab("Emulator", create_emulator_tab(), key="-EMULATOR_TAB-"),
                         sg.Tab("Stats", create_stats_tab(), key="-STATS_TAB-"),
+                        sg.Tab("Movement Bot", create_movement_bot_tab(), key="-MOVEMENT_BOT_TAB-"),
                     ]
                 ],
                 key="-MAIN_TABS-",
@@ -117,6 +119,16 @@ def create_main_tabs():
             )
         ]
     ]
+
+
+def create_movement_bot_tab():
+    """Create the movement bot tab."""
+    try:
+        movement_bot_gui = MovementBotGUI()
+        return movement_bot_gui.create_movement_bot_tab_group()
+    except ImportError:
+        # Fallback if movement bot components are not available
+        return [[sg.Text("Movement Bot features not available", justification="center")]]
 
 
 def create_status_bar():
