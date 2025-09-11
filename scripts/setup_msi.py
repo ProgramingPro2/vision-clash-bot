@@ -36,13 +36,7 @@ build_exe_options = {
         "setuptools", 
         "tkinter", 
         "unittest", 
-        "pydoc", 
         "doctest",
-        "email",
-        "http",
-        "urllib",
-        "xml",
-        "pydoc_data",
         "distutils",
         "lib2to3"
     ],
@@ -51,6 +45,10 @@ build_exe_options = {
         "pyclashbot.ai",
         "pyclashbot.detection",
         "pyclashbot.config",
+        "pyclashbot.bot",
+        "pyclashbot.emulators",
+        "pyclashbot.interface",
+        "pyclashbot.utils",
         "torch",
         "sklearn",
         "scipy",
@@ -58,6 +56,11 @@ build_exe_options = {
         "pytesseract",
         "cv2",
         "numpy",
+        "PIL",
+        "psutil",
+        "pymemuc",
+        "freesimplegui",
+        "pygetwindow",
     ],
     "include_files": [
         ROOT_DIR / "assets" / "pixel-pycb.ico",
@@ -65,12 +68,22 @@ build_exe_options = {
         ROOT_DIR / "pyclashbot" / "__version__",
         # Include model directories for movement bot (only if they exist)
         *[ROOT_DIR / dir_name for dir_name in ["models", "data", "config"] if (ROOT_DIR / dir_name).exists()],
+        # Include Windows-specific files (only if they exist)
+        *[("pyclashbot/emulators/configs/memu_config.json", "pyclashbot/emulators/configs/memu_config.json") 
+          if (ROOT_DIR / "pyclashbot" / "emulators" / "configs" / "memu_config.json").exists() else ()],
     ],
     "include_msvcr": True,
     "zip_include_packages": "*",
     "zip_exclude_packages": "",
     "optimize": 0,  # Don't optimize to avoid import issues
     "silent": False,  # Show build progress
+    "replace_paths": [
+        ("*", ""),  # Remove path prefixes
+    ],
+    "build_exe": "build/exe.win-amd64-3.12",  # Explicit build directory
+    "constants": [
+        "BUILD_EXE=True",  # Add build constant
+    ],
 }
 
 bdist_msi_options = {
