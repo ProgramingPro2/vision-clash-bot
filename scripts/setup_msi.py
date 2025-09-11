@@ -59,8 +59,11 @@ build_exe_options = {
         "PIL",
         "psutil",
         "pymemuc",
-        "freesimplegui",
+        "FreeSimpleGUI",
         "pygetwindow",
+    ],
+    "includes": [
+        "FreeSimpleGUI",
     ],
     "include_files": [
         ROOT_DIR / "assets" / "pixel-pycb.ico",
@@ -80,7 +83,7 @@ build_exe_options = {
     "replace_paths": [
         ("*", ""),  # Remove path prefixes
     ],
-    "build_exe": "build/exe.win-amd64-3.12",  # Explicit build directory
+    "build_exe": "build/exe.win-amd64-3.12",  # Explicit build directory for Windows
     "constants": [
         "BUILD_EXE=True",  # Add build constant
     ],
@@ -97,7 +100,7 @@ bdist_msi_options = {
     },
 }
 
-# Force Windows compilation for cross-platform building
+# Force Windows compilation for GitHub Actions
 # This will work with Wine or when building on Windows
 base = "Win32GUI" if GUI else None
 uac_admin = True
