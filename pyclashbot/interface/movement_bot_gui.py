@@ -103,6 +103,12 @@ class MovementBotGUI:
             [sg.Text("Gamma:"), 
              sg.InputText("0.95", key="-GAMMA-", size=(10, 1))],
             
+            [sg.Text("Placement Reward:"), 
+             sg.InputText("0.1", key="-PLACEMENT_REWARD-", size=(10, 1))],
+            
+            [sg.Text("Detection Reward:"), 
+             sg.InputText("0.2", key="-DETECTION_REWARD-", size=(10, 1))],
+            
             [sg.HSeparator()],
             [sg.Text("Model Management", font=("Arial", 10, "bold"))],
             
@@ -276,6 +282,8 @@ class MovementBotGUI:
             # DQN config
             config.dqn_enabled = window["-DQN_ENABLED-"].get()
             config.dqn_model_path = window["-MODEL_PATH-"].get()
+            config.placement_reward = float(window["-PLACEMENT_REWARD-"].get())
+            config.detection_reward = float(window["-DETECTION_REWARD-"].get())
             
             # Visualization config
             config.enable_visualization = window["-REALTIME_VISUALIZATION-"].get()
@@ -308,6 +316,8 @@ class MovementBotGUI:
             # DQN config
             window["-DQN_ENABLED-"].update(config.dqn_enabled)
             window["-MODEL_PATH-"].update(config.dqn_model_path)
+            window["-PLACEMENT_REWARD-"].update(str(config.placement_reward))
+            window["-DETECTION_REWARD-"].update(str(config.detection_reward))
             
             # Visualization config
             window["-REALTIME_VISUALIZATION-"].update(config.enable_visualization)

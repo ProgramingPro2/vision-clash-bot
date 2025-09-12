@@ -60,17 +60,26 @@ class GameState:
 @dataclass
 class GameAction:
     """Represents a game action taken by the agent."""
-    card_index: int  # Which card to play (0-3)
-    position: Tuple[float, float]  # Where to play it (normalized coordinates)
-    timestamp: float  # When the action was taken
+    action_type: str  # "play_card" or "wait"
+    card_index: Optional[int] = None  # Which card to play (0-3) if action_type is "play_card"
+    position: Optional[Tuple[float, float]] = None  # Where to play it (normalized coordinates)
+    timestamp: float = 0.0  # When the action was taken
+    card_identity: Optional[str] = None  # Identified card name (e.g., "zap", "hog")
+    placement_success: bool = False  # Whether placement was successful
+    detection_success: bool = False  # Whether unit was detected after placement
+    elixir_cost: float = 0.0  # Elixir cost of the action
 
 
 @dataclass
 class GameReward:
     """Represents a reward signal for the agent."""
     immediate_reward: float  # Immediate reward (damage dealt, units killed, etc.)
-    game_outcome: Optional[float]  # Final game outcome (-1, 0, 1 for loss, draw, win)
-    timestamp: float  # When the reward was received
+    placement_reward: float = 0.0  # Reward for successful card placement
+    detection_reward: float = 0.0  # Reward for successful unit detection after placement
+    elixir_efficiency_reward: float = 0.0  # Reward for good elixir management
+    wait_reward: float = 0.0  # Reward for strategic waiting
+    game_outcome: Optional[float] = None  # Final game outcome (-1, 0, 1 for loss, draw, win)
+    timestamp: float = 0.0  # When the reward was received
 
 
 class DQNNetwork(nn.Module):
@@ -148,7 +157,11 @@ class DQNAgent:
                  epsilon_decay: float = 0.995,
                  memory_size: int = 10000,
                  batch_size: int = 32,
-                 target_update_freq: int = 100):
+                 target_update_freq: int = 100,
+                 placement_reward: float = 0.1,
+                 detection_reward: float = 0.2,
+                 elixir_efficiency_reward: float = 0.05,
+                 wait_reward: float = 0.02):
         """
         Initialize DQN agent.
         
@@ -164,6 +177,10 @@ class DQNAgent:
             memory_size: Size of replay buffer
             batch_size: Batch size for training
             target_update_freq: Frequency of target network updates
+            placement_reward: Reward for successful card placement
+            detection_reward: Reward for successful unit detection
+            elixir_efficiency_reward: Reward for good elixir management
+            wait_reward: Reward for strategic waiting
         """
         self.state_size = state_size
         self.action_size = action_size
@@ -174,6 +191,10 @@ class DQNAgent:
         self.epsilon_decay = epsilon_decay
         self.batch_size = batch_size
         self.target_update_freq = target_update_freq
+        self.placement_reward = placement_reward
+        self.detection_reward = detection_reward
+        self.elixir_efficiency_reward = elixir_efficiency_reward
+        self.wait_reward = wait_reward
         
         # Neural networks
         self.q_network = DQNNetwork(state_size, hidden_sizes, action_size)
@@ -197,36 +218,112 @@ class DQNAgent:
         self.q_network.to(self.device)
         self.target_network.to(self.device)
     
-    def select_action(self, state: GameState, available_actions: List[int] = None) -> int:
+    def select_action(self, state: GameState, available_cards: List[int] = None, 
+                     card_elixir_costs: List[float] = None) -> GameAction:
         """
-        Select action using epsilon-greedy policy.
+        Select action using epsilon-greedy policy with wait option and continuous placement.
         
         Args:
             state: Current game state
-            available_actions: List of available action indices
+            available_cards: List of available card indices (0-3)
+            card_elixir_costs: List of elixir costs for each card
             
         Returns:
-            Selected action index
+            GameAction object with action type, card, position, etc.
         """
-        if available_actions is None:
-            available_actions = list(range(self.action_size))
+        if available_cards is None:
+            available_cards = list(range(4))
+        if card_elixir_costs is None:
+            card_elixir_costs = [3.0, 3.0, 3.0, 3.0]  # Default costs
+        
+        # Check which cards we can afford
+        affordable_cards = []
+        for i, card_idx in enumerate(available_cards):
+            if card_elixir_costs[i] <= state.elixir_count:
+                affordable_cards.append(card_idx)
+        
+        # Always allow waiting
+        available_actions = ["wait"]
+        if affordable_cards:
+            available_actions.extend([f"play_card_{i}" for i in affordable_cards])
         
         if random.random() < self.epsilon:
             # Random action
-            return random.choice(available_actions)
+            if random.random() < 0.3 and available_actions:  # 30% chance to wait
+                return GameAction(
+                    action_type="wait",
+                    timestamp=time.time(),
+                    elixir_cost=0.0
+                )
+            elif affordable_cards:
+                card_index = random.choice(affordable_cards)
+                position = (random.random(), random.random())
+                return GameAction(
+                    action_type="play_card",
+                    card_index=card_index,
+                    position=position,
+                    timestamp=time.time(),
+                    elixir_cost=card_elixir_costs[available_cards.index(card_index)]
+                )
+            else:
+                return GameAction(
+                    action_type="wait",
+                    timestamp=time.time(),
+                    elixir_cost=0.0
+                )
         else:
-            # Greedy action
+            # Greedy action using neural network
             with torch.no_grad():
                 state_tensor = state.to_tensor().unsqueeze(0).to(self.device)
                 q_values = self.q_network(state_tensor)
                 
-                # Mask unavailable actions
-                masked_q_values = q_values.clone()
-                for i in range(self.action_size):
-                    if i not in available_actions:
-                        masked_q_values[0, i] = float('-inf')
+                # Action space: [wait, card0, card1, card2, card3, pos_x, pos_y]
+                # First 5 outputs: wait + 4 cards
+                action_q_values = q_values[0, :5]
                 
-                return masked_q_values.argmax().item()
+                # Mask unavailable/unaffordable actions
+                masked_q_values = action_q_values.clone()
+                masked_q_values[0] = float('-inf')  # Mask wait initially
+                
+                # Check if we should wait (low elixir or no good plays)
+                if state.elixir_count < 4.0 or not affordable_cards:
+                    masked_q_values[0] = action_q_values[0]  # Allow waiting
+                else:
+                    # Mask unaffordable cards
+                    for i, card_idx in enumerate(available_cards):
+                        if card_idx not in affordable_cards:
+                            masked_q_values[card_idx + 1] = float('-inf')
+                
+                # Select best action
+                action_idx = masked_q_values.argmax().item()
+                
+                if action_idx == 0:  # Wait action
+                    return GameAction(
+                        action_type="wait",
+                        timestamp=time.time(),
+                        elixir_cost=0.0
+                    )
+                else:  # Play card action
+                    card_index = action_idx - 1
+                    if card_index in affordable_cards:
+                        # Get position from network outputs
+                        pos_x = torch.sigmoid(q_values[0, 5]).item()  # Normalize to [0,1]
+                        pos_y = torch.sigmoid(q_values[0, 6]).item()  # Normalize to [0,1]
+                        
+                        return GameAction(
+                            action_type="play_card",
+                            card_index=card_index,
+                            position=(pos_x, pos_y),
+                            timestamp=time.time(),
+                            elixir_cost=card_elixir_costs[available_cards.index(card_index)]
+                        )
+                    else:
+                        # Fallback to wait if card not affordable
+                        return GameAction(
+                            action_type="wait",
+                            timestamp=time.time(),
+                            elixir_cost=0.0
+                        )
     
     def remember(self, state: GameState, action: GameAction, reward: GameReward,
                  next_state: GameState, done: bool):
@@ -248,8 +345,24 @@ class DQNAgent:
         
         # Prepare batch data
         states = torch.stack([exp[0].to_tensor() for exp in batch]).to(self.device)
-        actions = torch.LongTensor([exp[1].card_index for exp in batch]).to(self.device)
-        rewards = torch.FloatTensor([exp[2].immediate_reward for exp in batch]).to(self.device)
+        
+        # Convert actions to action indices
+        action_indices = []
+        for exp in batch:
+            action = exp[1]
+            if action.action_type == "wait":
+                action_indices.append(0)  # Wait action is index 0
+            else:  # play_card
+                action_indices.append(action.card_index + 1)  # Card actions are indices 1-4
+        
+        actions = torch.LongTensor(action_indices).to(self.device)
+        
+        # Combine all reward components
+        total_rewards = torch.FloatTensor([
+            exp[2].immediate_reward + exp[2].placement_reward + exp[2].detection_reward + 
+            exp[2].elixir_efficiency_reward + exp[2].wait_reward
+            for exp in batch
+        ]).to(self.device)
         next_states = torch.stack([exp[3].to_tensor() for exp in batch]).to(self.device)
         dones = torch.BoolTensor([exp[4] for exp in batch]).to(self.device)
         
@@ -259,7 +372,7 @@ class DQNAgent:
         # Next Q values from target network
         with torch.no_grad():
             next_q_values = self.target_network(next_states).max(1)[0]
-            target_q_values = rewards + (self.gamma * next_q_values * ~dones)
+            target_q_values = total_rewards + (self.gamma * next_q_values * ~dones)
         
         # Compute loss
         loss = F.mse_loss(current_q_values.squeeze(), target_q_values)
@@ -280,6 +393,41 @@ class DQNAgent:
         
         self.loss_history.append(loss.item())
         return loss.item()
+    
+    def calculate_placement_reward(self, action: GameAction) -> float:
+        """Calculate reward for successful card placement."""
+        if action.placement_success:
+            return self.placement_reward
+        return 0.0
+    
+    def calculate_detection_reward(self, action: GameAction) -> float:
+        """Calculate reward for successful unit detection after placement."""
+        if action.detection_success:
+            return self.detection_reward
+        return 0.0
+    
+    def calculate_elixir_efficiency_reward(self, action: GameAction, current_elixir: float) -> float:
+        """Calculate reward for good elixir management."""
+        if action.action_type == "wait":
+            # Reward waiting when elixir is low
+            if current_elixir < 3.0:
+                return self.elixir_efficiency_reward
+        else:  # play_card
+            # Reward efficient elixir usage
+            elixir_remaining = current_elixir - action.elixir_cost
+            if elixir_remaining >= 2.0:  # Good elixir management
+                return self.elixir_efficiency_reward * 0.5
+        return 0.0
+    
+    def calculate_wait_reward(self, action: GameAction, game_state: GameState) -> float:
+        """Calculate reward for strategic waiting."""
+        if action.action_type == "wait":
+            # Reward waiting in appropriate situations
+            if game_state.elixir_count < 4.0:  # Low elixir
+                return self.wait_reward
+            elif len([h for h in game_state.tower_health if h < 0.3]) > 0:  # Critical health
+                return self.wait_reward * 0.5  # Smaller reward for waiting when in danger
+        return 0.0
     
     def save_model(self, filepath: str):
         """Save the trained model."""

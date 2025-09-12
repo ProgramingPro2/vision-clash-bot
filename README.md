@@ -56,9 +56,9 @@
 - **Real-time Statistics** - Track wins, losses, chests opened, and more
 - **Performance Monitoring** - Monitor bot runtime, failures, and account switches
 
-## 📥 **Download Windows Build**
+## 📥 **Download & Installation**
 
-### **Automated Builds (Recommended)**
+### **Option 1: Pre-built Windows Executable (Recommended)**
 
 The latest Windows executable is automatically built using GitHub Actions:
 
@@ -68,11 +68,80 @@ The latest Windows executable is automatically built using GitHub Actions:
 4. **Download `windows-build`**: This contains both the executable and MSI installer
 5. **Extract and Run**: Extract the zip file and run `py-clash-bot.exe`
 
-### **Build Contents**
+**Build Contents:**
 
 - **`py-clash-bot.exe`** - Standalone executable (5-6GB with all dependencies)
 - **`py-clash-bot-0.0.0-amd64.msi`** - Windows installer for easy setup
 - **All AI models and dependencies** included
+
+### **Option 2: Run from Source (Development/Testing)**
+
+For developers or users who want to run the latest code directly:
+
+#### **Prerequisites**
+
+- **Python 3.12** (required)
+- **Git** (for cloning the repository)
+- **Windows 10/11** (64-bit)
+- **8GB RAM minimum** (16GB recommended for AI features)
+
+#### **Installation Steps**
+
+1. **Clone the repository**:
+
+   ```bash
+   git clone https://github.com/ProgramingPro2/vision-clash-bot.git
+   cd vision-clash-bot
+   ```
+
+2. **Create and activate virtual environment**:
+
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+
+3. **Upgrade pip**:
+
+   ```bash
+   python -m pip install --upgrade pip
+   ```
+
+4. **Install the project in editable mode**:
+
+   ```bash
+   pip install -e .
+   ```
+
+5. **Run the application**:
+   ```bash
+   python -m pyclashbot
+   ```
+
+#### **Alternative: Using uv (Faster)**
+
+If you have `uv` installed (recommended for faster dependency management):
+
+```bash
+# Install uv if you don't have it
+pip install uv
+
+# Install dependencies using uv
+uv sync
+
+# Activate the virtual environment
+.venv\Scripts\activate
+
+# Run the application
+python -m pyclashbot
+```
+
+#### **Development Benefits**
+
+- **Immediate code changes** - No need to rebuild after modifications
+- **Debugging support** - Full Python debugging capabilities
+- **Latest features** - Access to the most recent code changes
+- **Custom modifications** - Easy to modify and test new features
 
 ### **System Requirements**
 

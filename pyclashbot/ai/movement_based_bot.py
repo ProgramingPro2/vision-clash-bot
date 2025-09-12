@@ -16,6 +16,7 @@ from ..detection.tower_health_detection import TowerHealthDetector, TowerHealthD
 from ..detection.unit_tracking import TrackedUnit, UnitTracker, UnitTrackerConfig
 from ..utils.logger import Logger
 from .dqn_agent import DQNAgent, GameAction, GameReward, GameState, GameStateProcessor
+from ..bot.card_detection import check_which_cards_are_available, identify_hand_cards
 
 
 @dataclass
@@ -37,7 +38,7 @@ class BotConfig:
     dqn_enabled: bool = True
     dqn_model_path: str = "models/dqn_model.pth"
     dqn_state_size: int = 200  # Will be calculated dynamically
-    dqn_action_size: int = 12  # 4 cards * 3 positions each
+    dqn_action_size: int = 7  # 1 wait + 4 cards + 2 position outputs (x, y)
     
     # Performance
     target_fps: int = 30
@@ -56,16 +57,18 @@ class BotConfig:
 class MovementBasedBot:
     """Main bot class integrating movement detection, unit tracking, and DQN decision making."""
     
-    def __init__(self, config: BotConfig, logger: Logger):
+    def __init__(self, config: BotConfig, logger: Logger, emulator=None):
         """
         Initialize movement-based bot.
         
         Args:
             config: Bot configuration
             logger: Logger instance
+            emulator: Emulator instance for card detection
         """
         self.config = config
         self.logger = logger
+        self.emulator = emulator
         
         # Initialize components
         self.movement_detector = None
@@ -219,27 +222,24 @@ class MovementBasedBot:
             
             # DQN decision making
             action = None
-            if self.dqn_agent and game_state:
-                # Select action
-                action_index = self.dqn_agent.select_action(game_state)
+            if self.dqn_agent and game_state and self.emulator:
+                # Get available cards from hand
+                available_cards = check_which_cards_are_available(self.emulator)
                 
-                # Convert action index to card and position
-                card_index = action_index % 4
-                position_index = action_index // 4
+                # Get elixir costs for cards (placeholder - would need actual detection)
+                card_elixir_costs = [3.0, 3.0, 3.0, 3.0]  # Default costs
                 
-                # Map position index to actual coordinates
-                positions = [(0.2, 0.5), (0.5, 0.5), (0.8, 0.5)]  # Left, center, right
-                if position_index < len(positions):
-                    position = positions[position_index]
-                else:
-                    position = (0.5, 0.5)  # Default center
+                # Select action using new method
+                action = self.dqn_agent.select_action(game_state, available_cards, card_elixir_costs)
                 
-                action = {
-                    'card_index': card_index,
-                    'position': position,
-                    'action_index': action_index,
-                    'timestamp': time.time()
-                }
+                # Identify the card if playing a card
+                if action.action_type == "play_card" and action.card_index is not None:
+                    try:
+                        action.card_identity = identify_hand_cards(self.emulator, action.card_index)
+                    except Exception as e:
+                        self.logger.error(f"Failed to identify card {action.card_index}: {e}")
+                        action.card_identity = "unknown"
+                
                 results['action'] = action
                 
                 # Store for training
@@ -272,25 +272,107 @@ class MovementBasedBot:
         
         return results
     
-    def _store_training_data(self, game_state: GameState, action: Dict):
+    def execute_action(self, action: GameAction) -> GameAction:
+        """
+        Execute an action (wait or play card) and check for success.
+        
+        Args:
+            action: GameAction object with action type and details
+            
+        Returns:
+            Updated GameAction with success flags
+        """
+        if not self.emulator or not action:
+            return action
+        
+        if action.action_type == "wait":
+            # For wait action, just mark as successful and return
+            action.placement_success = True  # Wait is always "successful"
+            action.detection_success = False  # No detection for wait
+            return action
+        
+        elif action.action_type == "play_card":
+            try:
+                # Convert normalized position to screen coordinates
+                screen_width, screen_height = 419, 633  # Clash Royale screen dimensions
+                x = int(action.position[0] * screen_width)
+                y = int(action.position[1] * screen_height)
+                
+                # Click the card
+                card_x = 133 + (action.card_index * 66)  # Card positions
+                card_y = 582
+                self.emulator.click(card_x, card_y)
+                
+                # Small delay for card selection
+                time.sleep(0.1)
+                
+                # Click the placement position
+                self.emulator.click(x, y)
+                
+                # Mark placement as successful
+                action.placement_success = True
+                
+                # Check for unit detection in next few frames
+                self._check_detection_success(action)
+                
+            except Exception as e:
+                self.logger.error(f"Failed to execute card action: {e}")
+                action.placement_success = False
+        
+        return action
+    
+    def _check_detection_success(self, action: GameAction):
+        """
+        Check if a unit was successfully detected after placement.
+        
+        Args:
+            action: GameAction object to update with detection success
+        """
+        if not self.movement_detector or not self.unit_tracker:
+            return
+        
+        try:
+            # Wait a bit for unit to appear
+            time.sleep(0.5)
+            
+            # Get current frame
+            frame = self.emulator.screenshot()
+            if frame is None:
+                return
+            
+            # Detect units
+            blobs = self.movement_detector.detect_units(frame)
+            tracked_units = self.unit_tracker.track_units(blobs)
+            
+            # Check if any new units were detected near the placement position
+            placement_x = action['position'][0] * 419  # Convert back to screen coords
+            placement_y = action['position'][1] * 633
+            
+            detection_threshold = 50  # Pixels
+            
+            for unit in tracked_units:
+                distance = ((unit.centroid[0] - placement_x) ** 2 + 
+                           (unit.centroid[1] - placement_y) ** 2) ** 0.5
+                
+                if distance < detection_threshold:
+                    action['detection_success'] = True
+                    self.logger.log(f"Successfully detected unit at {unit.centroid} after placement")
+                    break
+            
+        except Exception as e:
+            self.logger.error(f"Error checking detection success: {e}")
+    
+    def _store_training_data(self, game_state: GameState, action: GameAction):
         """Store training data for DQN."""
         if self.previous_game_state is not None and self.last_action is not None:
-            # Calculate reward (placeholder - would need actual game outcome tracking)
-            reward = self._calculate_reward(game_state, self.previous_game_state)
+            # Calculate reward with placement and detection components
+            reward = self._calculate_reward(game_state, self.previous_game_state, self.last_action)
             
             # Create training data
             training_data = {
                 'state': self.previous_game_state,
-                'action': GameAction(
-                    card_index=self.last_action['card_index'],
-                    position=self.last_action['position'],
-                    timestamp=self.last_action['timestamp']
-                ),
-                'reward': GameReward(
-                    immediate_reward=reward,
-                    game_outcome=None,  # Would be set at game end
-                    timestamp=time.time()
-                ),
+                'action': self.last_action,  # Already a GameAction object
+                'reward': reward,
                 'next_state': game_state,
                 'done': False  # Would be True at game end
             }
@@ -301,16 +383,10 @@ class MovementBasedBot:
             if len(self.training_data) >= 32:  # Batch size
                 self._train_dqn()
     
-    def _calculate_reward(self, current_state: GameState, previous_state: GameState) -> float:
-        """Calculate reward based on state changes."""
-        # Placeholder reward calculation
-        # In practice, this would consider:
-        # - Damage dealt to enemy towers
-        # - Units killed
-        # - Elixir efficiency
-        # - Tower health changes
-        
-        reward = 0.0
+    def _calculate_reward(self, current_state: GameState, previous_state: GameState, action: GameAction = None) -> GameReward:
+        """Calculate reward based on state changes and action success."""
+        # Base reward calculation
+        immediate_reward = 0.0
         
         # Simple reward based on tower health changes
         if current_state.tower_health and previous_state.tower_health:
@@ -318,11 +394,39 @@ class MovementBasedBot:
                 if i < len(previous_state.tower_health):
                     health_change = previous_state.tower_health[i] - current_state.tower_health[i]
                     if i < 2:  # Own towers
-                        reward -= health_change * 0.1  # Penalty for losing health
+                        immediate_reward -= health_change * 0.1  # Penalty for losing health
                     else:  # Enemy towers
-                        reward += health_change * 0.1  # Reward for dealing damage
+                        immediate_reward += health_change * 0.1  # Reward for dealing damage
         
-        return reward
+        # Calculate all reward components
+        placement_reward = 0.0
+        detection_reward = 0.0
+        elixir_efficiency_reward = 0.0
+        wait_reward = 0.0
+        
+        if action and self.dqn_agent:
+            # Calculate placement reward
+            placement_reward = self.dqn_agent.calculate_placement_reward(action)
+            
+            # Calculate detection reward
+            detection_reward = self.dqn_agent.calculate_detection_reward(action)
+            
+            # Calculate elixir efficiency reward
+            elixir_efficiency_reward = self.dqn_agent.calculate_elixir_efficiency_reward(
+                action, previous_state.elixir_count
+            )
+            
+            # Calculate wait reward
+            wait_reward = self.dqn_agent.calculate_wait_reward(action, previous_state)
+        
+        return GameReward(
+            immediate_reward=immediate_reward,
+            placement_reward=placement_reward,
+            detection_reward=detection_reward,
+            elixir_efficiency_reward=elixir_efficiency_reward,
+            wait_reward=wait_reward,
+            timestamp=time.time()
+        )
     
     def _train_dqn(self):
         """Train the DQN agent."""

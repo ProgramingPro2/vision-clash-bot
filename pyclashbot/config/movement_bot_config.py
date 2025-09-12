@@ -45,7 +45,7 @@ class MovementBotSettings:
     # DQN settings
     dqn_enabled: bool = True
     state_size: int = 200
-    action_size: int = 12
+    action_size: int = 7  # 1 wait + 4 cards + 2 position outputs
     hidden_sizes: list = field(default_factory=lambda: [512, 256, 128])
     learning_rate: float = 0.001
     gamma: float = 0.95
@@ -55,6 +55,10 @@ class MovementBotSettings:
     memory_size: int = 10000
     batch_size: int = 32
     target_update_freq: int = 100
+    placement_reward: float = 0.1  # Reward for successful card placement
+    detection_reward: float = 0.2  # Reward for successful unit detection
+    elixir_efficiency_reward: float = 0.05  # Reward for good elixir management
+    wait_reward: float = 0.02  # Reward for strategic waiting
     
     # Performance settings
     target_fps: int = 30
@@ -114,6 +118,10 @@ class MovementBotSettings:
             'memory_size': self.memory_size,
             'batch_size': self.batch_size,
             'target_update_freq': self.target_update_freq,
+            'placement_reward': self.placement_reward,
+            'detection_reward': self.detection_reward,
+            'elixir_efficiency_reward': self.elixir_efficiency_reward,
+            'wait_reward': self.wait_reward,
             'target_fps': self.target_fps,
             'enable_visualization': self.enable_visualization,
             'save_training_data': self.save_training_data,

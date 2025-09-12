@@ -37,8 +37,8 @@ class MovementFightManager:
         self.logger = logger
         self.config = config
         
-        # Initialize movement-based bot
-        self.movement_bot = MovementBasedBot(config, logger)
+        # Initialize movement-based bot with emulator
+        self.movement_bot = MovementBasedBot(config, logger, emulator)
         
         # Fight state tracking
         self.in_battle = False
@@ -276,11 +276,49 @@ class MovementFightManager:
         try:
             while not self.action_queue.empty():
                 action = self.action_queue.get_nowait()
-                self.execute_action(action)
+                
+                # Execute the action
+                executed_action = self.movement_bot.execute_action(action)
+                
+                # Store action for training
+                self._store_action_for_training(executed_action)
+                
+                self.actions_taken += 1
+                self.last_action_time = time.time()
+                
         except queue.Empty:
             pass
         except Exception as e:
             self.logger.error(f"Error processing pending actions: {e}")
+    
+    def execute_action_immediately(self, action: Dict) -> Dict:
+        """
+        Execute an action immediately and return updated action with success flags.
+        
+        Args:
+            action: Action dictionary with card_index and position
+            
+        Returns:
+            Updated action dictionary with placement_success and detection_success flags
+        """
+        if not action:
+            return action
+        
+        # Check cooldown
+        current_time = time.time()
+        if current_time - self.last_action_time < self.action_cooldown:
+            return action
+        
+        # Execute the action
+        executed_action = self.movement_bot.execute_action(action)
+        
+        # Store for training
+        self._store_action_for_training(executed_action)
+        
+        self.actions_taken += 1
+        self.last_action_time = current_time
+        
+        return executed_action
     
     def _log_fight_statistics(self):
         """Log fight statistics."""
