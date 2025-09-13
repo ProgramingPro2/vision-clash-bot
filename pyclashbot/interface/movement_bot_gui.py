@@ -80,6 +80,61 @@ class MovementBotGUI:
         
         return sg.Tab("Unit Tracking", layout, key="-TRACKING_TAB-")
     
+    def create_training_tab(self) -> sg.Tab:
+        """Create tab for training mode configuration and management."""
+        layout = [
+            [sg.Text("AI Training Mode", font=("Arial", 14, "bold"))],
+            [sg.Text("The bot is now in training mode - it will automatically learn from battles", 
+                    font=("Arial", 10), text_color="green")],
+            [sg.HSeparator()],
+            
+            [sg.Text("Training Status", font=("Arial", 12, "bold"))],
+            [sg.Text("Model Status:", size=(15, 1)), 
+             sg.Text("Loading...", key="-MODEL_STATUS-", size=(20, 1))],
+            
+            [sg.Text("Battles Completed:", size=(15, 1)), 
+             sg.Text("0", key="-BATTLE_COUNT-", size=(10, 1))],
+            
+            [sg.Text("Last Save:", size=(15, 1)), 
+             sg.Text("Never", key="-LAST_SAVE-", size=(20, 1))],
+            
+            [sg.HSeparator()],
+            
+            [sg.Text("Auto-Save Settings", font=("Arial", 12, "bold"))],
+            [sg.Text("Save Every N Battles:"), 
+             sg.InputText(str(self.config.auto_save_interval), 
+                         key="-AUTO_SAVE_INTERVAL-", size=(5, 1))],
+            
+            [sg.Checkbox("Auto-save on Exit", 
+                        key="-AUTO_SAVE_EXIT-", 
+                        default=self.config.auto_save_on_exit)],
+            
+            [sg.Text("Max Backup Models:"), 
+             sg.InputText(str(self.config.max_backup_models), 
+                         key="-MAX_BACKUPS-", size=(5, 1))],
+            
+            [sg.HSeparator()],
+            
+            [sg.Text("Training Data Collection", font=("Arial", 12, "bold"))],
+            [sg.Checkbox("Save Training Data", 
+                        key="-SAVE_TRAINING_DATA-", 
+                        default=self.config.save_training_data)],
+            
+            [sg.Checkbox("Collect Training Data", 
+                        key="-COLLECT_TRAINING_DATA-", 
+                        default=self.config.collect_training_data)],
+            
+            [sg.HSeparator()],
+            
+            [sg.Button("Force Save Model", key="-FORCE_SAVE-", size=(15, 1)),
+             sg.Button("Reset Model", key="-RESET_MODEL-", size=(15, 1))],
+            
+            [sg.Button("View Training Stats", key="-VIEW_STATS-", size=(15, 1)),
+             sg.Button("Export Training Data", key="-EXPORT_DATA-", size=(15, 1))],
+        ]
+        
+        return sg.Tab("AI Training", layout, key="-TRAINING_TAB-")
+    
     def create_dqn_tab(self) -> sg.Tab:
         """Create tab for DQN configuration and management."""
         layout = [
@@ -210,6 +265,7 @@ class MovementBotGUI:
     def create_movement_bot_tab_group(self) -> sg.TabGroup:
         """Create the main tab group for movement-based bot features."""
         tabs = [
+            self.create_training_tab(),  # Training tab first - primary focus
             self.create_movement_detection_tab(),
             self.create_unit_tracking_tab(),
             self.create_dqn_tab(),
@@ -220,16 +276,16 @@ class MovementBotGUI:
         return sg.TabGroup([tabs], key="-MOVEMENT_BOT_TABS-", enable_events=True)
     
     def create_control_buttons(self) -> list:
-        """Create control buttons for movement-based bot."""
+        """Create control buttons for movement-based bot training mode."""
         return [
-            [sg.Button("Start Movement Bot", key="-START_MOVEMENT_BOT-", size=(15, 1)),
-             sg.Button("Stop Movement Bot", key="-STOP_MOVEMENT_BOT-", size=(15, 1))],
+            [sg.Button("Start Training", key="-START_TRAINING-", size=(15, 1), button_color=("white", "green")),
+             sg.Button("Stop Training", key="-STOP_TRAINING-", size=(15, 1), button_color=("white", "red"))],
             
-            [sg.Button("Toggle Movement Detection", key="-TOGGLE_MOVEMENT-", size=(18, 1)),
-             sg.Button("Toggle Unit Tracking", key="-TOGGLE_TRACKING-", size=(18, 1))],
+            [sg.Button("Force Save Model", key="-FORCE_SAVE_MODEL-", size=(15, 1)),
+             sg.Button("Reset Model", key="-RESET_MODEL-", size=(15, 1))],
             
-            [sg.Button("Toggle DQN", key="-TOGGLE_DQN-", size=(15, 1)),
-             sg.Button("Toggle Visualization", key="-TOGGLE_VISUALIZATION-", size=(18, 1))],
+            [sg.Button("Toggle Visualization", key="-TOGGLE_VISUALIZATION-", size=(18, 1)),
+             sg.Button("View Training Stats", key="-VIEW_TRAINING_STATS-", size=(18, 1))],
         ]
     
     def update_performance_stats(self, window: sg.Window, stats: Dict[str, Any]):

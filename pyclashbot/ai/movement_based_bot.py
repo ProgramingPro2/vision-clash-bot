@@ -21,29 +21,39 @@ from ..bot.card_detection import check_which_cards_are_available, identify_hand_
 
 @dataclass
 class BotConfig:
-    """Configuration for the movement-based bot."""
-    # Movement detection
+    """Configuration for the movement-based bot - Training Mode Only."""
+    # Training Mode - Always enabled
+    training_mode: bool = True
+    
+    # Movement detection - Required for training
     movement_detection_enabled: bool = True
     movement_detection_config: MovementDetectorConfig = None
     
-    # Unit tracking
+    # Unit tracking - Required for training
     unit_tracking_enabled: bool = True
     unit_tracking_config: UnitTrackerConfig = None
     
-    # Tower health detection
+    # Tower health detection - Required for training
     tower_health_enabled: bool = True
     tower_health_config: TowerHealthDetectorConfig = None
     
-    # DQN agent
+    # DQN agent - Training focused
     dqn_enabled: bool = True
     dqn_model_path: str = "models/dqn_model.pth"
+    dqn_backup_path: str = "models/dqn_model_backup.pth"
     dqn_state_size: int = 200  # Will be calculated dynamically
     dqn_action_size: int = 7  # 1 wait + 4 cards + 2 position outputs (x, y)
     
-    # Performance
+    # Auto-save settings
+    auto_save_interval: int = 10  # Save every N battles
+    auto_save_on_exit: bool = True
+    max_backup_models: int = 5  # Keep N backup models
+    
+    # Training settings
     target_fps: int = 30
     enable_visualization: bool = True
     save_training_data: bool = True
+    collect_training_data: bool = True  # Always collect data for training
     
     def __post_init__(self):
         if self.movement_detection_config is None:
@@ -92,6 +102,11 @@ class MovementBasedBot:
         self.training_data = []
         self.episode_data = []
         
+        # Auto-save tracking
+        self.battle_count = 0
+        self.last_save_time = time.time()
+        self.model_save_history = []
+        
         # Threading for real-time processing
         self.processing_queue = queue.Queue(maxsize=10)
         self.result_queue = queue.Queue(maxsize=10)
@@ -136,12 +151,8 @@ class MovementBasedBot:
                     action_size=self.config.dqn_action_size
                 )
                 
-                # Load existing model if available
-                if os.path.exists(self.config.dqn_model_path):
-                    self.dqn_agent.load_model(self.config.dqn_model_path)
-                    self.logger.log(f"Loaded DQN model from {self.config.dqn_model_path}")
-                else:
-                    self.logger.log("Starting with new DQN model")
+                # Auto-load best available model
+                self.auto_load_model()
             
             self.logger.log("All components initialized successfully")
             
@@ -578,14 +589,125 @@ class MovementBasedBot:
         
         self.logger.log("Configuration updated")
     
+    def auto_save_model(self):
+        """Automatically save the model with backup management."""
+        if not self.dqn_agent:
+            return
+        
+        try:
+            # Create models directory if it doesn't exist
+            os.makedirs(os.path.dirname(self.config.dqn_model_path), exist_ok=True)
+            
+            # Save backup of current model
+            if os.path.exists(self.config.dqn_model_path):
+                backup_path = f"{self.config.dqn_model_path}.backup_{int(time.time())}"
+                import shutil
+                shutil.copy2(self.config.dqn_model_path, backup_path)
+                self.model_save_history.append(backup_path)
+                
+                # Clean up old backups
+                if len(self.model_save_history) > self.config.max_backup_models:
+                    old_backup = self.model_save_history.pop(0)
+                    if os.path.exists(old_backup):
+                        os.remove(old_backup)
+            
+            # Save current model
+            self.dqn_agent.save_model(self.config.dqn_model_path)
+            self.last_save_time = time.time()
+            
+            self.logger.log(f"Model auto-saved to {self.config.dqn_model_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to auto-save model: {e}")
+    
+    def auto_load_model(self):
+        """Automatically load the best available model."""
+        if not self.dqn_agent:
+            return
+        
+        try:
+            # Try to load main model first
+            if os.path.exists(self.config.dqn_model_path):
+                self.dqn_agent.load_model(self.config.dqn_model_path)
+                self.logger.log(f"Loaded main model from {self.config.dqn_model_path}")
+                return
+            
+            # Try to load backup model
+            if os.path.exists(self.config.dqn_backup_path):
+                self.dqn_agent.load_model(self.config.dqn_backup_path)
+                self.logger.log(f"Loaded backup model from {self.config.dqn_backup_path}")
+                return
+            
+            # Try to load any available backup
+            backup_files = [f for f in os.listdir("models/") if f.startswith("dqn_model.pth.backup_")]
+            if backup_files:
+                latest_backup = sorted(backup_files)[-1]
+                backup_path = os.path.join("models", latest_backup)
+                self.dqn_agent.load_model(backup_path)
+                self.logger.log(f"Loaded latest backup model from {backup_path}")
+                return
+            
+            self.logger.log("No existing model found, starting with new model")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to auto-load model: {e}")
+    
+    def on_battle_end(self, battle_result: str):
+        """Called when a battle ends - handles auto-save logic."""
+        self.battle_count += 1
+        
+        # Auto-save based on interval
+        if self.battle_count % self.config.auto_save_interval == 0:
+            self.auto_save_model()
+        
+        # Save training data
+        if self.config.save_training_data and self.episode_data:
+            self._save_episode_data(battle_result)
+    
+    def _save_episode_data(self, battle_result: str):
+        """Save episode training data."""
+        try:
+            episode_data = {
+                'battle_result': battle_result,
+                'episode_data': self.episode_data.copy(),
+                'timestamp': time.time(),
+                'battle_count': self.battle_count
+            }
+            
+            # Save to training data file
+            training_file = "data/training_episodes.json"
+            os.makedirs(os.path.dirname(training_file), exist_ok=True)
+            
+            # Load existing data
+            if os.path.exists(training_file):
+                with open(training_file, 'r') as f:
+                    all_data = json.load(f)
+            else:
+                all_data = []
+            
+            all_data.append(episode_data)
+            
+            # Save updated data
+            with open(training_file, 'w') as f:
+                json.dump(all_data, f, indent=2)
+            
+            # Clear episode data for next battle
+            self.episode_data.clear()
+            
+            self.logger.log(f"Saved episode data for battle {self.battle_count}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save episode data: {e}")
+    
     def cleanup(self):
         """Cleanup resources."""
         self.running = False
         
+        # Auto-save on exit if enabled
+        if self.config.auto_save_on_exit and self.dqn_agent:
+            self.auto_save_model()
+        
         if self.processing_thread and self.processing_thread.is_alive():
             self.processing_thread.join(timeout=1.0)
-        
-        # Save model before cleanup
-        self.save_model()
         
         self.logger.log("Bot cleanup completed")
