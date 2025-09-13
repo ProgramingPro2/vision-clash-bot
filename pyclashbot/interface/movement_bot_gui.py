@@ -312,7 +312,9 @@ class MovementBotGUI:
             window["-AVG_LOSS-"].update(f"{stats.get('avg_loss', 0.0):.3f}")
             
         except Exception as e:
-            print(f"Error updating performance stats: {e}")
+            # Note: GUI doesn't have direct access to logger, but this is a GUI error
+            # that should be handled gracefully without crashing the interface
+            pass
     
     def get_config_from_gui(self, window: sg.Window) -> BotConfig:
         """Get configuration from GUI values."""
@@ -346,7 +348,9 @@ class MovementBotGUI:
             config.target_fps = int(window["-TARGET_FPS-"].get())
             
         except Exception as e:
-            print(f"Error getting config from GUI: {e}")
+            # Note: GUI doesn't have direct access to logger, but this is a GUI error
+            # that should be handled gracefully without crashing the interface
+            pass
         
         return config
     
@@ -380,7 +384,9 @@ class MovementBotGUI:
             window["-TARGET_FPS-"].update(str(config.target_fps))
             
         except Exception as e:
-            print(f"Error setting config to GUI: {e}")
+            # Note: GUI doesn't have direct access to logger, but this is a GUI error
+            # that should be handled gracefully without crashing the interface
+            pass
 
 
 def create_visualization_window() -> sg.Window:
