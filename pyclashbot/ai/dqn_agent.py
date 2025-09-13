@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from ..detection.unit_tracking import TrackedUnit
+from ..utils.logger import Logger
 
 
 @dataclass
@@ -149,6 +150,7 @@ class DQNAgent:
     def __init__(self, 
                  state_size: int,
                  action_size: int,
+                 logger: Optional[Logger] = None,
                  hidden_sizes: List[int] = [512, 256, 128],
                  learning_rate: float = 0.001,
                  gamma: float = 0.95,
@@ -168,6 +170,7 @@ class DQNAgent:
         Args:
             state_size: Size of state vector
             action_size: Number of possible actions
+            logger: Logger instance for logging
             hidden_sizes: Hidden layer sizes for neural network
             learning_rate: Learning rate for optimizer
             gamma: Discount factor for future rewards
@@ -184,6 +187,7 @@ class DQNAgent:
         """
         self.state_size = state_size
         self.action_size = action_size
+        self.logger = logger
         self.learning_rate = learning_rate
         self.gamma = gamma
         self.epsilon = epsilon
@@ -392,6 +396,11 @@ class DQNAgent:
             self.epsilon *= self.epsilon_decay
         
         self.loss_history.append(loss.item())
+        
+        # Log training progress periodically
+        if self.training_step % 100 == 0 and self.logger:
+            self.logger.log(f"DQN Training - Step: {self.training_step}, Loss: {loss.item():.4f}, Epsilon: {self.epsilon:.3f}")
+        
         return loss.item()
     
     def calculate_placement_reward(self, action: GameAction) -> float:
@@ -431,29 +440,46 @@ class DQNAgent:
     
     def save_model(self, filepath: str):
         """Save the trained model."""
-        torch.save({
-            'q_network_state_dict': self.q_network.state_dict(),
-            'target_network_state_dict': self.target_network.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'epsilon': self.epsilon,
-            'training_step': self.training_step,
-            'episode_rewards': self.episode_rewards,
-            'episode_lengths': self.episode_lengths,
-            'loss_history': self.loss_history
-        }, filepath)
+        try:
+            torch.save({
+                'q_network_state_dict': self.q_network.state_dict(),
+                'target_network_state_dict': self.target_network.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'epsilon': self.epsilon,
+                'training_step': self.training_step,
+                'episode_rewards': self.episode_rewards,
+                'episode_lengths': self.episode_lengths,
+                'loss_history': self.loss_history
+            }, filepath)
+            if self.logger:
+                self.logger.log(f"DQN model saved to {filepath}")
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to save DQN model to {filepath}: {e}")
+            raise
     
     def load_model(self, filepath: str):
         """Load a trained model."""
-        if os.path.exists(filepath):
-            checkpoint = torch.load(filepath, map_location=self.device)
-            self.q_network.load_state_dict(checkpoint['q_network_state_dict'])
-            self.target_network.load_state_dict(checkpoint['target_network_state_dict'])
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.epsilon = checkpoint['epsilon']
-            self.training_step = checkpoint['training_step']
-            self.episode_rewards = checkpoint['episode_rewards']
-            self.episode_lengths = checkpoint['episode_lengths']
-            self.loss_history = checkpoint['loss_history']
+        try:
+            if os.path.exists(filepath):
+                checkpoint = torch.load(filepath, map_location=self.device)
+                self.q_network.load_state_dict(checkpoint['q_network_state_dict'])
+                self.target_network.load_state_dict(checkpoint['target_network_state_dict'])
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                self.epsilon = checkpoint['epsilon']
+                self.training_step = checkpoint['training_step']
+                self.episode_rewards = checkpoint['episode_rewards']
+                self.episode_lengths = checkpoint['episode_lengths']
+                self.loss_history = checkpoint['loss_history']
+                if self.logger:
+                    self.logger.log(f"DQN model loaded from {filepath}")
+            else:
+                if self.logger:
+                    self.logger.log(f"DQN model file not found: {filepath}")
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to load DQN model from {filepath}: {e}")
+            raise
     
     def get_training_stats(self) -> Dict:
         """Get training statistics."""

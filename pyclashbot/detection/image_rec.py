@@ -1,11 +1,13 @@
 import os
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from os.path import abspath, dirname, join
+from typing import Optional
 
 import cv2
 import numpy as np
 
 from pyclashbot.utils.image_handler import open_from_path
+from pyclashbot.utils.logger import Logger
 
 # =============================================================================
 # IMAGE RECOGNITION FUNCTIONS
@@ -18,6 +20,7 @@ def find_image(
     tolerance: float = 0.88,
     subcrop: tuple[int, int, int, int] | None = None,
     show_image: bool = False,
+    logger: Optional[Logger] = None,
 ) -> tuple[int, int] | None:
     """Find the first matching reference image in a screenshot
 
@@ -26,6 +29,8 @@ def find_image(
         folder: folder containing reference images (within reference_images directory)
         tolerance: matching tolerance (0.0 to 1.0)
         subcrop: optional subcrop region as (x1, y1, x2, y2) to search within
+        show_image: whether to show the image (currently unused)
+        logger: optional logger instance for logging
 
     Returns:
         tuple[int, int] | None: (x, y) coordinates of found image relative to full image, or None if not found
@@ -49,7 +54,8 @@ def find_image(
         # Find which file matched
         for i, location in enumerate(locations):
             if location is not None:
-                print(f"Match found in file: {filenames[i]}")
+                if logger:
+                    logger.log(f"Image match found in file: {filenames[i]}")
                 break
         # Convert from [y, x] to (x, y) and add offset to get coordinates relative to full image
         return (coord[1] + offset_x, coord[0] + offset_y)

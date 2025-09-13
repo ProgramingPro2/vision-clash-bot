@@ -148,7 +148,8 @@ class MovementBasedBot:
                 self.state_processor = GameStateProcessor()
                 self.dqn_agent = DQNAgent(
                     state_size=self.config.dqn_state_size,
-                    action_size=self.config.dqn_action_size
+                    action_size=self.config.dqn_action_size,
+                    logger=self.logger
                 )
                 
                 # Auto-load best available model
@@ -158,7 +159,6 @@ class MovementBasedBot:
             
         except Exception as e:
             self.logger.error(f"Failed to initialize components: {e}")
-            print(f"[ERROR] Failed to initialize movement-based bot components: {e}")
             raise
     
     def process_frame(self, frame: np.ndarray) -> Dict[str, Any]:
@@ -269,7 +269,6 @@ class MovementBasedBot:
             
         except Exception as e:
             self.logger.error(f"Error processing frame: {e}")
-            print(f"[ERROR] Error processing frame in movement-based bot: {e}")
             results['error'] = str(e)
         
         # Calculate processing time
