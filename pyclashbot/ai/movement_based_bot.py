@@ -165,6 +165,59 @@ class MovementBasedBot:
             # Don't raise - allow bot to continue with limited functionality
             self.logger.log("Continuing with limited functionality")
     
+    def _detect_elixir_from_frame(self, frame: np.ndarray) -> float:
+        """
+        Detect elixir count from the game frame using the original bot's pixel detection method.
+        
+        Args:
+            frame: Game frame
+            
+        Returns:
+            Detected elixir count (0-10)
+        """
+        try:
+            # Import the original bot's elixir detection constants and functions
+            from pyclashbot.detection.image_rec import pixel_is_equal
+            
+            # Elixir coordinates from the original bot (right side of screen)
+            ELIXIR_COORDS = [
+                [613, 149], [613, 165], [613, 188], [613, 212], [613, 240],
+                [613, 262], [613, 287], [613, 314], [613, 339], [613, 364]
+            ]
+            ELIXIR_COLOR = [240, 137, 244]  # Purple elixir color
+            
+            # Count how many elixir dots are visible (purple)
+            elixir_count = 0
+            for i, coord in enumerate(ELIXIR_COORDS):
+                x, y = coord[0], coord[1]
+                
+                # Check if coordinates are within frame bounds
+                if y < frame.shape[0] and x < frame.shape[1]:
+                    pixel = frame[y, x]
+                    if pixel_is_equal(pixel, ELIXIR_COLOR, tol=65):
+                        elixir_count += 1
+                    else:
+                        # If this elixir dot is not visible, stop counting
+                        # (elixir dots are filled from left to right)
+                        break
+            
+            if self.frame_count % 30 == 0:  # Log every 30 frames
+                self.logger.log(f"Elixir detection: counted {elixir_count} elixir dots from frame")
+                # Log the first few pixel values for debugging
+                for i in range(min(3, len(ELIXIR_COORDS))):
+                    coord = ELIXIR_COORDS[i]
+                    x, y = coord[0], coord[1]
+                    if y < frame.shape[0] and x < frame.shape[1]:
+                        pixel = frame[y, x]
+                        self.logger.log(f"  - Elixir dot {i+1} at ({x},{y}): {pixel.tolist()}")
+            
+            return float(elixir_count)
+            
+        except Exception as e:
+            self.logger.error(f"Error detecting elixir: {e}")
+            # Fallback to a reasonable default
+            return 5.0
+    
     def process_frame(self, frame: np.ndarray) -> Dict[str, Any]:
         """
         Process a single frame and return bot decisions.
@@ -275,9 +328,14 @@ class MovementBasedBot:
             # Game state processing
             game_state = None
             if self.dqn_agent and tracked_units and tower_health:
-                # Get elixir count (placeholder - would need actual detection)
-                # For now, use a more realistic range based on battle timing
-                elixir_count = min(10.0, 3.0 + (time.time() - self.battle_start_time) * 0.1)  # Gradual increase
+                # Try to detect actual elixir from the game screen
+                elixir_count = self._detect_elixir_from_frame(frame)
+                
+                if self.frame_count % 5 == 0:
+                    self.logger.log("STEP 4: GAME STATE CREATION")
+                    self.logger.log(f"  - Tracked units: {len(tracked_units)}")
+                    self.logger.log(f"  - Detected elixir: {elixir_count}")
+                    self.logger.log(f"  - Tower health available: {tower_health is not None}")
                 
                 # Get time remaining (placeholder)
                 time_remaining = 120.0  # Placeholder
