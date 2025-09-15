@@ -71,13 +71,13 @@ class TowerHealthDetector:
         
         # Create simple health bar templates
         for health in [100, 75, 50, 25, 0]:
-            # Green health bar
-            green_bar = np.zeros((10, 100), dtype=np.uint8)
+            # Green health bar (RGB format)
+            green_bar = np.zeros((10, 100, 3), dtype=np.uint8)
             green_bar[:, :int(health)] = [0, 255, 0]  # Green
             templates[f'green_{health}'] = green_bar
             
-            # Red health bar
-            red_bar = np.zeros((10, 100), dtype=np.uint8)
+            # Red health bar (RGB format)
+            red_bar = np.zeros((10, 100, 3), dtype=np.uint8)
             red_bar[:, :int(health)] = [0, 0, 255]  # Red
             templates[f'red_{health}'] = red_bar
         
