@@ -100,35 +100,58 @@ def create_stats_tab():
 
 def create_main_tabs():
     """Create the main tab group."""
-    return [
-        [
-            sg.TabGroup(
-                [
-                    [
-                        sg.Tab("Jobs", create_jobs_tab(), key="-JOBS_TAB-"),
-                        sg.Tab("Emulator", create_emulator_tab(), key="-EMULATOR_TAB-"),
-                        sg.Tab("Stats", create_stats_tab(), key="-STATS_TAB-"),
-                        sg.Tab("Movement Bot", create_movement_bot_tab(), key="-MOVEMENT_BOT_TAB-"),
-                    ]
-                ],
-                key="-MAIN_TABS-",
-                enable_events=True,
-                expand_x=True,
-                expand_y=True,
-                pad=0,
-            )
-        ]
-    ]
-
-
-def create_movement_bot_tab():
-    """Create the movement bot tab."""
     try:
         movement_bot_gui = MovementBotGUI()
-        return [movement_bot_gui.create_movement_bot_tab_group()]
+        # Create movement bot tabs directly
+        movement_bot_tabs = [
+            movement_bot_gui.create_training_tab(),
+            movement_bot_gui.create_movement_detection_tab(),
+            movement_bot_gui.create_unit_tracking_tab(),
+            movement_bot_gui.create_dqn_tab(),
+            movement_bot_gui.create_visualization_tab(),
+            movement_bot_gui.create_performance_tab()
+        ]
+        
+        return [
+            [
+                sg.TabGroup(
+                    [
+                        [
+                            sg.Tab("Jobs", create_jobs_tab(), key="-JOBS_TAB-"),
+                            sg.Tab("Emulator", create_emulator_tab(), key="-EMULATOR_TAB-"),
+                            sg.Tab("Stats", create_stats_tab(), key="-STATS_TAB-"),
+                            *movement_bot_tabs  # Add all movement bot tabs directly
+                        ]
+                    ],
+                    key="-MAIN_TABS-",
+                    enable_events=True,
+                    expand_x=True,
+                    expand_y=True,
+                    pad=0,
+                )
+            ]
+        ]
     except ImportError:
         # Fallback if movement bot components are not available
-        return [[sg.Text("Movement Bot features not available", justification="center")]]
+        return [
+            [
+                sg.TabGroup(
+                    [
+                        [
+                            sg.Tab("Jobs", create_jobs_tab(), key="-JOBS_TAB-"),
+                            sg.Tab("Emulator", create_emulator_tab(), key="-EMULATOR_TAB-"),
+                            sg.Tab("Stats", create_stats_tab(), key="-STATS_TAB-"),
+                            sg.Tab("Movement Bot", [[sg.Text("Movement Bot features not available", justification="center")]], key="-MOVEMENT_BOT_TAB-"),
+                        ]
+                    ],
+                    key="-MAIN_TABS-",
+                    enable_events=True,
+                    expand_x=True,
+                    expand_y=True,
+                    pad=0,
+                )
+            ]
+        ]
 
 
 def create_status_bar():
