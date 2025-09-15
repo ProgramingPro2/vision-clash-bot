@@ -167,7 +167,8 @@ class MovementBasedBot:
     
     def _detect_elixir_from_frame(self, frame: np.ndarray) -> float:
         """
-        Detect elixir count from the game frame using the original bot's pixel detection method.
+        Detect elixir count from the game frame using the EXACT same method as the original bot.
+        Test each elixir amount from 1-10 until we find the exact amount.
         
         Args:
             frame: Game frame
@@ -179,42 +180,127 @@ class MovementBasedBot:
             # Import the original bot's elixir detection constants and functions
             from pyclashbot.detection.image_rec import pixel_is_equal
             
-            # Elixir coordinates from the original bot (right side of screen)
+            # EXACT same constants from the original bot
             ELIXIR_COORDS = [
-                [613, 149], [613, 165], [613, 188], [613, 212], [613, 240],
-                [613, 262], [613, 287], [613, 314], [613, 339], [613, 364]
+                [613, 149],
+                [613, 165],
+                [613, 188],
+                [613, 212],
+                [613, 240],
+                [613, 262],
+                [613, 287],
+                [613, 314],
+                [613, 339],
+                [613, 364],
             ]
-            ELIXIR_COLOR = [240, 137, 244]  # Purple elixir color
+            ELIXIR_COLOR = [240, 137, 244]
             
-            # Count how many elixir dots are visible (purple)
+            # Test each elixir amount from 1-10 using the EXACT same logic as count_elixer()
             elixir_count = 0
-            for i, coord in enumerate(ELIXIR_COORDS):
+            for test_amount in range(1, 11):  # Test 1 through 10
+                coord = ELIXIR_COORDS[test_amount - 1]  # -1 because array is 0-indexed
                 x, y = coord[0], coord[1]
                 
                 # Check if coordinates are within frame bounds
                 if y < frame.shape[0] and x < frame.shape[1]:
-                    pixel = frame[y, x]
-                    if pixel_is_equal(pixel, ELIXIR_COLOR, tol=65):
-                        elixir_count += 1
+                    # Use EXACT same pixel comparison as original bot's count_elixer()
+                    if pixel_is_equal(frame[y, x], ELIXIR_COLOR, tol=65):
+                        elixir_count = test_amount  # This amount is available
                     else:
-                        # If this elixir dot is not visible, stop counting
-                        # (elixir dots are filled from left to right)
+                        # If this elixir dot is not visible, we've found the max
                         break
+                else:
+                    # If coordinates are out of bounds, we've found the max
+                    break
             
             if self.frame_count % 30 == 0:  # Log every 30 frames
-                self.logger.log(f"Elixir detection: counted {elixir_count} elixir dots from frame")
-                # Log the first few pixel values for debugging
-                for i in range(min(3, len(ELIXIR_COORDS))):
-                    coord = ELIXIR_COORDS[i]
+                self.logger.log(f"Frame elixir detection: found {elixir_count} elixir using original bot method")
+                # Log the test results for debugging
+                for test_amount in range(1, min(6, elixir_count + 2)):  # Log first 5 tests
+                    coord = ELIXIR_COORDS[test_amount - 1]
                     x, y = coord[0], coord[1]
                     if y < frame.shape[0] and x < frame.shape[1]:
                         pixel = frame[y, x]
-                        self.logger.log(f"  - Elixir dot {i+1} at ({x},{y}): {pixel.tolist()}")
+                        is_elixir = pixel_is_equal(pixel, ELIXIR_COLOR, tol=65)
+                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): {pixel.tolist()} -> {is_elixir}")
+                    else:
+                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): OUT OF BOUNDS")
             
             return float(elixir_count)
             
         except Exception as e:
             self.logger.error(f"Error detecting elixir: {e}")
+            # Fallback to a reasonable default
+            return 5.0
+    
+    def _detect_elixir_from_emulator(self) -> float:
+        """
+        Detect elixir count using the EXACT same method as the original bot.
+        Test each elixir amount from 1-10 until we find the exact amount.
+        
+        Returns:
+            Detected elixir count (0-10)
+        """
+        try:
+            # Import the original bot's elixir detection constants and functions
+            from pyclashbot.detection.image_rec import pixel_is_equal
+            
+            # EXACT same constants from the original bot
+            ELIXIR_COORDS = [
+                [613, 149],
+                [613, 165],
+                [613, 188],
+                [613, 212],
+                [613, 240],
+                [613, 262],
+                [613, 287],
+                [613, 314],
+                [613, 339],
+                [613, 364],
+            ]
+            ELIXIR_COLOR = [240, 137, 244]
+            
+            # Get fresh screenshot from emulator
+            iar = self.emulator.screenshot()
+            if iar is None:
+                self.logger.error("Emulator screenshot returned None")
+                return 5.0
+            
+            # Test each elixir amount from 1-10 using the EXACT same logic as count_elixer()
+            elixir_count = 0
+            for test_amount in range(1, 11):  # Test 1 through 10
+                coord = ELIXIR_COORDS[test_amount - 1]  # -1 because array is 0-indexed
+                x, y = coord[0], coord[1]
+                
+                # Check if coordinates are within frame bounds
+                if y < iar.shape[0] and x < iar.shape[1]:
+                    # Use EXACT same pixel comparison as original bot's count_elixer()
+                    if pixel_is_equal(iar[y, x], ELIXIR_COLOR, tol=65):
+                        elixir_count = test_amount  # This amount is available
+                    else:
+                        # If this elixir dot is not visible, we've found the max
+                        break
+                else:
+                    # If coordinates are out of bounds, we've found the max
+                    break
+            
+            if self.frame_count % 30 == 0:  # Log every 30 frames
+                self.logger.log(f"Emulator elixir detection: found {elixir_count} elixir using original bot method")
+                # Log the test results for debugging
+                for test_amount in range(1, min(6, elixir_count + 2)):  # Log first 5 tests
+                    coord = ELIXIR_COORDS[test_amount - 1]
+                    x, y = coord[0], coord[1]
+                    if y < iar.shape[0] and x < iar.shape[1]:
+                        pixel = iar[y, x]
+                        is_elixir = pixel_is_equal(pixel, ELIXIR_COLOR, tol=65)
+                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): {pixel.tolist()} -> {is_elixir}")
+                    else:
+                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): OUT OF BOUNDS")
+            
+            return float(elixir_count)
+            
+        except Exception as e:
+            self.logger.error(f"Error detecting elixir from emulator: {e}")
             # Fallback to a reasonable default
             return 5.0
     
@@ -330,6 +416,10 @@ class MovementBasedBot:
             if self.dqn_agent and tracked_units and tower_health:
                 # Try to detect actual elixir from the game screen
                 elixir_count = self._detect_elixir_from_frame(frame)
+                
+                # If frame-based detection fails, try emulator-based detection
+                if elixir_count == 0.0 and self.emulator:
+                    elixir_count = self._detect_elixir_from_emulator()
                 
                 if self.frame_count % 5 == 0:
                     self.logger.log("STEP 4: GAME STATE CREATION")
