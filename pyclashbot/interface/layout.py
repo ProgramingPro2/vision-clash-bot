@@ -125,7 +125,7 @@ def create_movement_bot_tab():
     """Create the movement bot tab."""
     try:
         movement_bot_gui = MovementBotGUI()
-        return movement_bot_gui.create_movement_bot_tab_group()
+        return [movement_bot_gui.create_movement_bot_tab_group()]
     except ImportError:
         # Fallback if movement bot components are not available
         return [[sg.Text("Movement Bot features not available", justification="center")]]
