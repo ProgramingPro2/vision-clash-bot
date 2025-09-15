@@ -235,10 +235,16 @@ class DQNAgent:
         Returns:
             GameAction object with action type, card, position, etc.
         """
+        if self.logger:
+            self.logger.log(f"DQN select_action called with state: elixir={state.elixir_count}, units={len(state.unit_positions)}")
+        
         if available_cards is None:
             available_cards = list(range(4))
         if card_elixir_costs is None:
             card_elixir_costs = [3.0, 3.0, 3.0, 3.0]  # Default costs
+        
+        if self.logger:
+            self.logger.log(f"Available cards: {available_cards}, costs: {card_elixir_costs}")
         
         # Check which cards we can afford
         affordable_cards = []
@@ -246,14 +252,25 @@ class DQNAgent:
             if card_elixir_costs[i] <= state.elixir_count:
                 affordable_cards.append(card_idx)
         
+        if self.logger:
+            self.logger.log(f"Affordable cards: {affordable_cards} (elixir: {state.elixir_count})")
+        
         # Always allow waiting
         available_actions = ["wait"]
         if affordable_cards:
             available_actions.extend([f"play_card_{i}" for i in affordable_cards])
         
+        if self.logger:
+            self.logger.log(f"Available actions: {available_actions}")
+        
         if random.random() < self.epsilon:
             # Random action
+            if self.logger:
+                self.logger.log(f"Taking RANDOM action (epsilon={self.epsilon:.3f})")
+            
             if random.random() < 0.3 and available_actions:  # 30% chance to wait
+                if self.logger:
+                    self.logger.log("Random action: WAIT")
                 return GameAction(
                     action_type="wait",
                     timestamp=time.time(),
@@ -262,6 +279,8 @@ class DQNAgent:
             elif affordable_cards:
                 card_index = random.choice(affordable_cards)
                 position = (random.random(), random.random())
+                if self.logger:
+                    self.logger.log(f"Random action: PLAY_CARD {card_index} at {position}")
                 return GameAction(
                     action_type="play_card",
                     card_index=card_index,
@@ -270,6 +289,8 @@ class DQNAgent:
                     elixir_cost=card_elixir_costs[available_cards.index(card_index)]
                 )
             else:
+                if self.logger:
+                    self.logger.log("Random action: WAIT (no affordable cards)")
                 return GameAction(
                     action_type="wait",
                     timestamp=time.time(),
@@ -277,9 +298,15 @@ class DQNAgent:
                 )
         else:
             # Greedy action using neural network
+            if self.logger:
+                self.logger.log(f"Taking GREEDY action (epsilon={self.epsilon:.3f})")
+            
             with torch.no_grad():
                 state_tensor = state.to_tensor().unsqueeze(0).to(self.device)
                 q_values = self.q_network(state_tensor)
+                
+                if self.logger:
+                    self.logger.log(f"Q-values shape: {q_values.shape}, values: {q_values[0, :5].tolist()}")
                 
                 # Action space: [wait, card0, card1, card2, card3, pos_x, pos_y]
                 # First 5 outputs: wait + 4 cards
@@ -290,18 +317,27 @@ class DQNAgent:
                 masked_q_values[0] = float('-inf')  # Mask wait initially
                 
                 # Check if we should wait (low elixir or no good plays)
-                if state.elixir_count < 4.0 or not affordable_cards:
+                if state.elixir_count < 2.0 or not affordable_cards:
                     masked_q_values[0] = action_q_values[0]  # Allow waiting
+                    if self.logger:
+                        self.logger.log(f"Allowing wait due to low elixir ({state.elixir_count}) or no affordable cards")
                 else:
                     # Mask unaffordable cards
                     for i, card_idx in enumerate(available_cards):
                         if card_idx not in affordable_cards:
                             masked_q_values[card_idx + 1] = float('-inf')
+                    if self.logger:
+                        self.logger.log(f"Masked unaffordable cards, masked values: {masked_q_values.tolist()}")
                 
                 # Select best action
                 action_idx = masked_q_values.argmax().item()
                 
+                if self.logger:
+                    self.logger.log(f"Selected action index: {action_idx}")
+                
                 if action_idx == 0:  # Wait action
+                    if self.logger:
+                        self.logger.log("Greedy action: WAIT")
                     return GameAction(
                         action_type="wait",
                         timestamp=time.time(),
@@ -314,6 +350,9 @@ class DQNAgent:
                         pos_x = torch.sigmoid(q_values[0, 5]).item()  # Normalize to [0,1]
                         pos_y = torch.sigmoid(q_values[0, 6]).item()  # Normalize to [0,1]
                         
+                        if self.logger:
+                            self.logger.log(f"Greedy action: PLAY_CARD {card_index} at ({pos_x:.3f}, {pos_y:.3f})")
+                        
                         return GameAction(
                             action_type="play_card",
                             card_index=card_index,
@@ -323,6 +362,8 @@ class DQNAgent:
                         )
                     else:
                         # Fallback to wait if card not affordable
+                        if self.logger:
+                            self.logger.log(f"Greedy action: WAIT (card {card_index} not affordable)")
                         return GameAction(
                             action_type="wait",
                             timestamp=time.time(),

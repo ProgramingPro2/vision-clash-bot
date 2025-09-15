@@ -44,7 +44,7 @@ class MovementFightManager:
         self.in_battle = False
         self.battle_start_time = 0
         self.last_action_time = 0
-        self.action_cooldown = 1.0  # Minimum time between actions
+        self.action_cooldown = 0.5  # Minimum time between actions (reduced for more responsiveness)
         
         # Performance tracking
         self.frames_processed = 0
@@ -73,13 +73,18 @@ class MovementFightManager:
     
     def _processing_loop(self):
         """Main processing loop for real-time battle analysis."""
+        self.logger.log("Processing loop started")
         while self.running and self.in_battle:
             try:
                 # Get frame from emulator
                 frame = self.emulator.screenshot()
                 if frame is None:
+                    self.logger.log("No frame captured, retrying...")
                     time.sleep(0.1)
                     continue
+                
+                if self.frames_processed % 30 == 0:  # Log every 30 frames
+                    self.logger.log(f"Captured frame: {frame.shape if hasattr(frame, 'shape') else 'unknown'}")
                 
                 # Process frame with movement bot
                 start_time = time.time()
@@ -99,6 +104,17 @@ class MovementFightManager:
                     if action:
                         self.action_queue.put(action)
                         self.actions_taken += 1
+                        self.logger.log(f"Queued action: {action.action_type} - Card {action.card_index} at {action.position}")
+                    else:
+                        self.logger.log("No action available from DQN agent")
+                else:
+                    # Log why we're not taking action (less frequently)
+                    if self.frames_processed % 60 == 0:  # Log every 2 seconds
+                        current_time = time.time()
+                        if current_time - self.last_action_time < self.action_cooldown:
+                            self.logger.log(f"Action on cooldown: {self.action_cooldown - (current_time - self.last_action_time):.2f}s remaining")
+                        else:
+                            self.logger.log("No valid action to take")
                 
                 # Log performance periodically
                 if self.frames_processed % 100 == 0:
@@ -122,12 +138,19 @@ class MovementFightManager:
         
         # Check cooldown
         if current_time - self.last_action_time < self.action_cooldown:
+            if self.frames_processed % 60 == 0:
+                self.logger.log(f"Action blocked by cooldown: {self.action_cooldown - (current_time - self.last_action_time):.2f}s remaining")
             return False
         
         # Check if we have a valid action
         action = results.get('action')
         if not action:
+            if self.frames_processed % 60 == 0:
+                self.logger.log("No action in results")
             return False
+        
+        if self.frames_processed % 60 == 0:
+            self.logger.log(f"Action available: {action.action_type} - {action.card_index} at {action.position}")
         
         # Check elixir availability (placeholder - would need actual detection)
         # For now, assume we have enough elixir
@@ -144,11 +167,15 @@ class MovementFightManager:
             True if action was executed successfully
         """
         try:
+            self.logger.log(f"Executing action: {action}")
+            
             card_index = action['card_index']
             position = action['position']
             
             # Check if card is available
             available_cards = check_which_cards_are_available(self.emulator)
+            self.logger.log(f"Available cards: {available_cards}")
+            
             if not available_cards[card_index]:
                 self.logger.log(f"Card {card_index} not available")
                 return False
@@ -158,21 +185,27 @@ class MovementFightManager:
             x = int(position[0] * screen_width)
             y = int(position[1] * screen_height)
             
+            self.logger.log(f"Converted position ({position[0]:.3f}, {position[1]:.3f}) to screen coords ({x}, {y})")
+            
             # Validate coordinates using existing validation system
             from .recorder import is_valid_play_input
             if not is_valid_play_input((x, y), card_index):
                 self.logger.log(f"Invalid coordinates: ({x}, {y}) for card {card_index}")
                 return False
             
+            self.logger.log(f"Coordinates validated, playing card {card_index} at ({x}, {y})")
+            
             # Play the card
             success = self._play_card_at_position(card_index, x, y)
             
             if success:
                 self.last_action_time = time.time()
-                self.logger.log(f"Played card {card_index} at ({x}, {y})")
+                self.logger.log(f"Successfully played card {card_index} at ({x}, {y})")
                 
                 # Store action for training
                 self._store_action_for_training(action)
+            else:
+                self.logger.log(f"Failed to play card {card_index} at ({x}, {y})")
             
             return success
             
@@ -196,14 +229,20 @@ class MovementFightManager:
             # Click on the card
             card_coords = [(142, 561), (210, 563), (272, 561), (341, 563)]
             if card_index < len(card_coords):
-                self.emulator.click(card_coords[card_index][0], card_coords[card_index][1])
+                card_x, card_y = card_coords[card_index]
+                self.logger.log(f"Clicking card {card_index} at ({card_x}, {card_y})")
+                self.emulator.click(card_x, card_y)
                 time.sleep(0.1)
                 
                 # Click at the target position
+                self.logger.log(f"Clicking target position at ({x}, {y})")
                 self.emulator.click(x, y)
                 time.sleep(0.1)
                 
+                self.logger.log(f"Card {card_index} play sequence completed")
                 return True
+            else:
+                self.logger.error(f"Invalid card index: {card_index}")
             
         except Exception as e:
             self.logger.error(f"Error playing card: {e}")

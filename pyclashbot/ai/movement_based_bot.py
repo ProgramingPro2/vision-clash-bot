@@ -91,6 +91,7 @@ class MovementBasedBot:
         self.frame_count = 0
         self.processing_times = []
         self.last_frame_time = time.time()
+        self.battle_start_time = time.time()
         
         # Game state tracking
         self.current_game_state = None
@@ -128,6 +129,8 @@ class MovementBasedBot:
                     history_length=self.config.movement_detection_config.history_length
                 )
                 self.logger.log("Movement detector initialized")
+            else:
+                self.logger.log("Movement detection disabled")
             
             # Unit tracker
             if self.config.unit_tracking_enabled:
@@ -159,7 +162,8 @@ class MovementBasedBot:
             
         except Exception as e:
             self.logger.error(f"Failed to initialize components: {e}")
-            raise
+            # Don't raise - allow bot to continue with limited functionality
+            self.logger.log("Continuing with limited functionality")
     
     def process_frame(self, frame: np.ndarray) -> Dict[str, Any]:
         """
@@ -173,6 +177,9 @@ class MovementBasedBot:
         """
         start_time = time.time()
         self.frame_count += 1
+        
+        if self.frame_count % 10 == 0:  # Log every 10 frames
+            self.logger.log(f"Processing frame {self.frame_count}, shape: {frame.shape}")
         
         results = {
             'frame_count': self.frame_count,
@@ -191,30 +198,49 @@ class MovementBasedBot:
             if self.movement_detector:
                 detected_blobs = self.movement_detector.detect_units(frame)
                 results['detected_units'] = detected_blobs
+                if self.frame_count % 30 == 0:  # Log every 30 frames
+                    self.logger.log(f"Detected {len(detected_blobs)} units")
+            else:
+                if self.frame_count % 30 == 0:
+                    self.logger.log("Movement detector not available")
             
             # Unit tracking
             tracked_units = []
             if self.unit_tracker and detected_blobs:
                 tracked_units = self.unit_tracker.track_units(detected_blobs)
                 results['tracked_units'] = tracked_units
+                if self.frame_count % 30 == 0:
+                    self.logger.log(f"Tracked {len(tracked_units)} units")
+            else:
+                if self.frame_count % 30 == 0:
+                    self.logger.log("Unit tracker not available or no blobs detected")
             
             # Tower health detection
             tower_health = None
             if self.tower_health_detector:
                 tower_health = self.tower_health_detector.detect_all_tower_health(frame)
                 results['tower_health'] = tower_health
+                if self.frame_count % 30 == 0:
+                    self.logger.log(f"Tower health detected: {tower_health}")
+            else:
+                if self.frame_count % 30 == 0:
+                    self.logger.log("Tower health detector not available")
             
             # Game state processing
             game_state = None
             if self.dqn_agent and tracked_units and tower_health:
                 # Get elixir count (placeholder - would need actual detection)
-                elixir_count = 5.0  # Placeholder
+                # For now, use a more realistic range based on battle timing
+                elixir_count = min(10.0, 3.0 + (time.time() - self.battle_start_time) * 0.1)  # Gradual increase
                 
                 # Get time remaining (placeholder)
                 time_remaining = 120.0  # Placeholder
                 
                 # Get card availability (placeholder)
                 card_availability = [True, True, True, True]  # Placeholder
+                
+                if self.frame_count % 30 == 0:
+                    self.logger.log(f"Creating game state: elixir={elixir_count:.1f}, units={len(tracked_units)}, time={time_remaining}")
                 
                 # Process game state
                 game_state = self.state_processor.process_game_state(
@@ -230,23 +256,44 @@ class MovementBasedBot:
                     card_availability=card_availability
                 )
                 results['game_state'] = game_state
+                
+                if self.frame_count % 30 == 0:
+                    self.logger.log(f"Game state created: {game_state}")
+            else:
+                if self.frame_count % 30 == 0:
+                    missing = []
+                    if not self.dqn_agent: missing.append("dqn_agent")
+                    if not tracked_units: missing.append("tracked_units")
+                    if not tower_health: missing.append("tower_health")
+                    self.logger.log(f"Cannot create game state, missing: {missing}")
             
             # DQN decision making
             action = None
             if self.dqn_agent and game_state and self.emulator:
+                if self.frame_count % 30 == 0:
+                    self.logger.log("DQN decision making: Getting available cards")
+                
                 # Get available cards from hand
                 available_cards = check_which_cards_are_available(self.emulator)
                 
                 # Get elixir costs for cards (placeholder - would need actual detection)
                 card_elixir_costs = [3.0, 3.0, 3.0, 3.0]  # Default costs
                 
+                if self.frame_count % 30 == 0:
+                    self.logger.log(f"Available cards: {available_cards}, costs: {card_elixir_costs}")
+                
                 # Select action using new method
                 action = self.dqn_agent.select_action(game_state, available_cards, card_elixir_costs)
+                
+                if self.frame_count % 30 == 0:
+                    self.logger.log(f"DQN selected action: {action.action_type} - {action.card_index} at {action.position}")
                 
                 # Identify the card if playing a card
                 if action.action_type == "play_card" and action.card_index is not None:
                     try:
                         action.card_identity = identify_hand_cards(self.emulator, action.card_index)
+                        if self.frame_count % 30 == 0:
+                            self.logger.log(f"Identified card: {action.card_identity}")
                     except Exception as e:
                         self.logger.error(f"Failed to identify card {action.card_index}: {e}")
                         action.card_identity = "unknown"
@@ -256,6 +303,39 @@ class MovementBasedBot:
                 # Store for training
                 if self.config.save_training_data:
                     self._store_training_data(game_state, action)
+            else:
+                # Fallback: Simple random action if DQN not available
+                if self.emulator and self.frame_count % 60 == 0:  # Every 2 seconds at 30fps
+                    try:
+                        if self.frame_count % 60 == 0:
+                            self.logger.log("Using fallback action system")
+                        available_cards = check_which_cards_are_available(self.emulator)
+                        if available_cards:
+                            import random
+                            from .dqn_agent import GameAction
+                            card_index = random.choice(available_cards)
+                            position = (random.uniform(0.2, 0.8), random.uniform(0.3, 0.7))
+                            action = GameAction(
+                                action_type="play_card",
+                                card_index=card_index,
+                                position=position,
+                                timestamp=time.time(),
+                                elixir_cost=3.0
+                            )
+                            results['action'] = action
+                            self.logger.log(f"Fallback action: Playing card {card_index} at {position}")
+                        else:
+                            if self.frame_count % 60 == 0:
+                                self.logger.log("Fallback: No available cards")
+                    except Exception as e:
+                        self.logger.error(f"Fallback action failed: {e}")
+                else:
+                    if self.frame_count % 60 == 0:
+                        missing = []
+                        if not self.dqn_agent: missing.append("dqn_agent")
+                        if not game_state: missing.append("game_state")
+                        if not self.emulator: missing.append("emulator")
+                        self.logger.log(f"DQN decision making skipped, missing: {missing}")
             
             # Create visualization
             if self.config.enable_visualization:
