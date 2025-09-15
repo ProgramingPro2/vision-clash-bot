@@ -178,8 +178,16 @@ class MovementBasedBot:
         start_time = time.time()
         self.frame_count += 1
         
-        if self.frame_count % 10 == 0:  # Log every 10 frames
-            self.logger.log(f"Processing frame {self.frame_count}, shape: {frame.shape}")
+        if self.frame_count % 5 == 0:  # Log every 5 frames for detailed debugging
+            self.logger.log("=" * 100)
+            self.logger.log(f"MOVEMENT BOT FRAME PROCESSING #{self.frame_count}")
+            self.logger.log("=" * 100)
+            self.logger.log(f"Frame details:")
+            self.logger.log(f"  - Shape: {frame.shape}")
+            self.logger.log(f"  - Dtype: {frame.dtype}")
+            self.logger.log(f"  - Min/Max values: {frame.min()}/{frame.max()}")
+            self.logger.log(f"  - Memory usage: {frame.nbytes} bytes")
+            self.logger.log(f"  - Processing start time: {start_time:.6f}")
         
         results = {
             'frame_count': self.frame_count,
@@ -195,36 +203,74 @@ class MovementBasedBot:
         try:
             # Movement detection
             detected_blobs = []
+            if self.frame_count % 5 == 0:
+                self.logger.log("STEP 1: MOVEMENT DETECTION")
+            
             if self.movement_detector:
+                if self.frame_count % 5 == 0:
+                    self.logger.log("  - Movement detector available, detecting units...")
+                detection_start = time.time()
                 detected_blobs = self.movement_detector.detect_units(frame)
+                detection_time = time.time() - detection_start
                 results['detected_units'] = detected_blobs
-                if self.frame_count % 30 == 0:  # Log every 30 frames
-                    self.logger.log(f"Detected {len(detected_blobs)} units")
+                
+                if self.frame_count % 5 == 0:
+                    self.logger.log(f"  - Detection completed in {detection_time:.6f}s")
+                    self.logger.log(f"  - Detected {len(detected_blobs)} units")
+                    for i, blob in enumerate(detected_blobs):
+                        self.logger.log(f"    Unit {i}: area={blob.area}, centroid={blob.centroid}")
             else:
-                if self.frame_count % 30 == 0:
-                    self.logger.log("Movement detector not available")
+                if self.frame_count % 5 == 0:
+                    self.logger.log("  - Movement detector NOT available")
             
             # Unit tracking
             tracked_units = []
+            if self.frame_count % 5 == 0:
+                self.logger.log("STEP 2: UNIT TRACKING")
+            
             if self.unit_tracker and detected_blobs:
+                if self.frame_count % 5 == 0:
+                    self.logger.log(f"  - Unit tracker available, tracking {len(detected_blobs)} blobs...")
+                tracking_start = time.time()
                 tracked_units = self.unit_tracker.track_units(detected_blobs)
+                tracking_time = time.time() - tracking_start
                 results['tracked_units'] = tracked_units
-                if self.frame_count % 30 == 0:
-                    self.logger.log(f"Tracked {len(tracked_units)} units")
+                
+                if self.frame_count % 5 == 0:
+                    self.logger.log(f"  - Tracking completed in {tracking_time:.6f}s")
+                    self.logger.log(f"  - Tracked {len(tracked_units)} units")
+                    for i, unit in enumerate(tracked_units):
+                        self.logger.log(f"    Track {i}: ID={unit.unit_id}, centroid={unit.centroid}, speed={unit.speed_vector}")
             else:
-                if self.frame_count % 30 == 0:
-                    self.logger.log("Unit tracker not available or no blobs detected")
+                if self.frame_count % 5 == 0:
+                    missing = []
+                    if not self.unit_tracker: missing.append("unit_tracker")
+                    if not detected_blobs: missing.append("detected_blobs")
+                    self.logger.log(f"  - Unit tracking skipped, missing: {missing}")
             
             # Tower health detection
             tower_health = None
+            if self.frame_count % 5 == 0:
+                self.logger.log("STEP 3: TOWER HEALTH DETECTION")
+            
             if self.tower_health_detector:
+                if self.frame_count % 5 == 0:
+                    self.logger.log("  - Tower health detector available, detecting health...")
+                health_start = time.time()
                 tower_health = self.tower_health_detector.detect_all_tower_health(frame)
+                health_time = time.time() - health_start
                 results['tower_health'] = tower_health
-                if self.frame_count % 30 == 0:
-                    self.logger.log(f"Tower health detected: {tower_health}")
+                
+                if self.frame_count % 5 == 0:
+                    self.logger.log(f"  - Health detection completed in {health_time:.6f}s")
+                    if tower_health:
+                        self.logger.log(f"  - Tower health: left={tower_health.left_tower_health}, right={tower_health.right_tower_health}")
+                        self.logger.log(f"  - Enemy health: left={tower_health.enemy_left_tower_health}, right={tower_health.enemy_right_tower_health}")
+                    else:
+                        self.logger.log("  - No tower health detected")
             else:
-                if self.frame_count % 30 == 0:
-                    self.logger.log("Tower health detector not available")
+                if self.frame_count % 5 == 0:
+                    self.logger.log("  - Tower health detector NOT available")
             
             # Game state processing
             game_state = None

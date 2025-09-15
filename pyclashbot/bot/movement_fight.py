@@ -59,10 +59,45 @@ class MovementFightManager:
     
     def start_battle_processing(self):
         """Start real-time battle processing."""
+        self.logger.log("=" * 120)
+        self.logger.log("STARTING BATTLE PROCESSING - DETAILED DEBUG")
+        self.logger.log("=" * 120)
+        
+        # Test emulator screenshot capability first
+        self.logger.log("STEP 1: TESTING EMULATOR SCREENSHOT CAPABILITY")
+        self.logger.log(f"  - Emulator type: {type(self.emulator)}")
+        self.logger.log(f"  - Emulator methods: {[m for m in dir(self.emulator) if 'screenshot' in m.lower()]}")
+        
+        screenshot_start = time.time()
+        test_frame = self.emulator.screenshot()
+        screenshot_time = time.time() - screenshot_start
+        
+        if test_frame is not None:
+            self.logger.log(f"  - Screenshot test SUCCESSFUL in {screenshot_time:.6f}s")
+            self.logger.log(f"  - Frame type: {type(test_frame)}")
+            self.logger.log(f"  - Frame shape: {test_frame.shape if hasattr(test_frame, 'shape') else 'unknown'}")
+            self.logger.log(f"  - Frame dtype: {test_frame.dtype if hasattr(test_frame, 'dtype') else 'unknown'}")
+            self.logger.log(f"  - Frame size: {test_frame.nbytes if hasattr(test_frame, 'nbytes') else 'unknown'} bytes")
+        else:
+            self.logger.error("  - Screenshot test FAILED - no frame captured")
+            self.logger.error(f"  - Screenshot time: {screenshot_time:.6f}s")
+        
+        self.logger.log("STEP 2: INITIALIZING PROCESSING THREAD")
+        self.logger.log(f"  - Current running state: {self.running}")
+        self.logger.log(f"  - Current in_battle state: {self.in_battle}")
+        self.logger.log(f"  - Processing thread exists: {self.processing_thread is not None}")
+        if self.processing_thread:
+            self.logger.log(f"  - Processing thread alive: {self.processing_thread.is_alive()}")
+        
         self.running = True
         self.processing_thread = threading.Thread(target=self._processing_loop)
         self.processing_thread.start()
-        self.logger.log("Started movement-based battle processing")
+        
+        self.logger.log("STEP 3: PROCESSING THREAD STARTED")
+        self.logger.log(f"  - New running state: {self.running}")
+        self.logger.log(f"  - Thread started: {self.processing_thread.is_alive()}")
+        self.logger.log(f"  - Thread name: {self.processing_thread.name}")
+        self.logger.log("=" * 120)
     
     def stop_battle_processing(self):
         """Stop real-time battle processing."""
@@ -73,26 +108,68 @@ class MovementFightManager:
     
     def _processing_loop(self):
         """Main processing loop for real-time battle analysis."""
-        self.logger.log("Processing loop started")
+        self.logger.log("=" * 120)
+        self.logger.log("PROCESSING LOOP STARTED - DETAILED DEBUG")
+        self.logger.log("=" * 120)
+        self.logger.log(f"Initial state:")
+        self.logger.log(f"  - Running: {self.running}")
+        self.logger.log(f"  - In battle: {self.in_battle}")
+        self.logger.log(f"  - Frames processed: {self.frames_processed}")
+        self.logger.log(f"  - Actions taken: {self.actions_taken}")
+        
+        frame_attempts = 0
+        loop_iterations = 0
+        
         while self.running and self.in_battle:
+            loop_iterations += 1
+            loop_start = time.time()
+            
+            if loop_iterations % 10 == 0:  # Log every 10 iterations
+                self.logger.log(f"PROCESSING LOOP ITERATION #{loop_iterations}")
+                self.logger.log(f"  - Running: {self.running}")
+                self.logger.log(f"  - In battle: {self.in_battle}")
+                self.logger.log(f"  - Frame attempts: {frame_attempts}")
+                self.logger.log(f"  - Frames processed: {self.frames_processed}")
+            
             try:
                 # Get frame from emulator
+                screenshot_start = time.time()
                 frame = self.emulator.screenshot()
+                screenshot_time = time.time() - screenshot_start
+                frame_attempts += 1
+                
                 if frame is None:
-                    self.logger.log("No frame captured, retrying...")
+                    if frame_attempts % 5 == 0:  # Log every 5 failed attempts
+                        self.logger.log(f"  - Screenshot FAILED after {frame_attempts} attempts")
+                        self.logger.log(f"  - Screenshot time: {screenshot_time:.6f}s")
+                        self.logger.log(f"  - Loop iteration: {loop_iterations}")
                     time.sleep(0.1)
                     continue
                 
-                if self.frames_processed % 30 == 0:  # Log every 30 frames
-                    self.logger.log(f"Captured frame: {frame.shape if hasattr(frame, 'shape') else 'unknown'}")
+                # Reset frame attempts counter on successful capture
+                frame_attempts = 0
+                
+                if self.frames_processed % 5 == 0:  # Log every 5 frames
+                    self.logger.log(f"  - Screenshot SUCCESS in {screenshot_time:.6f}s")
+                    self.logger.log(f"  - Frame shape: {frame.shape if hasattr(frame, 'shape') else 'unknown'}")
+                    self.logger.log(f"  - Frame type: {type(frame)}")
                 
                 # Process frame with movement bot
-                start_time = time.time()
+                processing_start = time.time()
                 results = self.movement_bot.process_frame(frame)
-                processing_time = time.time() - start_time
+                processing_time = time.time() - processing_start
                 
                 self.frames_processed += 1
                 self.processing_times.append(processing_time)
+                
+                if self.frames_processed % 5 == 0:
+                    self.logger.log(f"  - Frame processing completed in {processing_time:.6f}s")
+                    self.logger.log(f"  - Results keys: {list(results.keys())}")
+                    self.logger.log(f"  - Action in results: {'action' in results}")
+                    if 'action' in results and results['action']:
+                        action = results['action']
+                        self.logger.log(f"  - Action type: {action.action_type}")
+                        self.logger.log(f"  - Action details: {action}")
                 
                 # Keep only recent processing times
                 if len(self.processing_times) > 100:
@@ -276,7 +353,10 @@ class MovementFightManager:
         self.battle_start_time = time.time()
         
         try:
+            loop_count = 0
             while check_for_in_battle_with_delay(self.emulator):
+                loop_count += 1
+                
                 if recording_flag:
                     # Save frame for recording
                     frame = self.emulator.screenshot()
@@ -286,6 +366,29 @@ class MovementFightManager:
                 
                 # Process any pending actions
                 self._process_pending_actions()
+                
+                # Fallback: If processing thread isn't working, try direct processing
+                if self.frames_processed == 0 and loop_count % 30 == 0:  # Every 3 seconds
+                    self.logger.log("Processing thread not capturing frames, trying direct processing...")
+                    try:
+                        frame = self.emulator.screenshot()
+                        if frame is not None:
+                            self.logger.log(f"Direct frame capture successful: {frame.shape}")
+                            # Process frame directly
+                            results = self.movement_bot.process_frame(frame)
+                            self.frames_processed += 1
+                            
+                            # Check for actions
+                            if self._should_take_action(results):
+                                action = results.get('action')
+                                if action:
+                                    self.logger.log(f"Direct processing found action: {action.action_type}")
+                                    self.execute_action(action)
+                                    self.actions_taken += 1
+                        else:
+                            self.logger.log("Direct frame capture also failed")
+                    except Exception as e:
+                        self.logger.error(f"Direct processing failed: {e}")
                 
                 # Check if still in battle
                 if not check_if_in_battle(self.emulator):

@@ -236,7 +236,21 @@ class DQNAgent:
             GameAction object with action type, card, position, etc.
         """
         if self.logger:
-            self.logger.log(f"DQN select_action called with state: elixir={state.elixir_count}, units={len(state.unit_positions)}")
+            self.logger.log("=" * 80)
+            self.logger.log("DQN SELECT_ACTION DEBUG START")
+            self.logger.log("=" * 80)
+            self.logger.log(f"Input state details:")
+            self.logger.log(f"  - Elixir count: {state.elixir_count}")
+            self.logger.log(f"  - Unit positions: {len(state.unit_positions)} units")
+            self.logger.log(f"  - Unit sizes: {len(state.unit_sizes)} sizes")
+            self.logger.log(f"  - Unit speeds: {len(state.unit_speeds)} speeds")
+            self.logger.log(f"  - Unit types: {len(state.unit_types)} types")
+            self.logger.log(f"  - Tower health: {state.tower_health}")
+            self.logger.log(f"  - Time remaining: {state.time_remaining}")
+            self.logger.log(f"  - Card availability: {state.card_availability}")
+            self.logger.log(f"  - Epsilon: {self.epsilon:.6f}")
+            self.logger.log(f"  - Training step: {self.training_step}")
+            self.logger.log(f"  - Memory size: {len(self.memory)}")
         
         if available_cards is None:
             available_cards = list(range(4))
@@ -244,16 +258,26 @@ class DQNAgent:
             card_elixir_costs = [3.0, 3.0, 3.0, 3.0]  # Default costs
         
         if self.logger:
-            self.logger.log(f"Available cards: {available_cards}, costs: {card_elixir_costs}")
+            self.logger.log(f"Available cards: {available_cards}")
+            self.logger.log(f"Card elixir costs: {card_elixir_costs}")
+            self.logger.log(f"Device: {self.device}")
+            self.logger.log(f"Q-network parameters: {sum(p.numel() for p in self.q_network.parameters())} total params")
         
         # Check which cards we can afford
         affordable_cards = []
+        if self.logger:
+            self.logger.log("Checking card affordability:")
         for i, card_idx in enumerate(available_cards):
-            if card_elixir_costs[i] <= state.elixir_count:
+            cost = card_elixir_costs[i]
+            can_afford = cost <= state.elixir_count
+            if self.logger:
+                self.logger.log(f"  - Card {card_idx}: cost={cost}, elixir={state.elixir_count}, affordable={can_afford}")
+            if can_afford:
                 affordable_cards.append(card_idx)
         
         if self.logger:
-            self.logger.log(f"Affordable cards: {affordable_cards} (elixir: {state.elixir_count})")
+            self.logger.log(f"Affordable cards: {affordable_cards}")
+            self.logger.log(f"Total affordable: {len(affordable_cards)}/{len(available_cards)}")
         
         # Always allow waiting
         available_actions = ["wait"]
@@ -262,78 +286,134 @@ class DQNAgent:
         
         if self.logger:
             self.logger.log(f"Available actions: {available_actions}")
+            self.logger.log(f"Total available actions: {len(available_actions)}")
         
-        if random.random() < self.epsilon:
+        random_value = random.random()
+        if self.logger:
+            self.logger.log(f"Random value: {random_value:.6f}, Epsilon: {self.epsilon:.6f}")
+        
+        if random_value < self.epsilon:
             # Random action
             if self.logger:
-                self.logger.log(f"Taking RANDOM action (epsilon={self.epsilon:.3f})")
+                self.logger.log("=" * 40)
+                self.logger.log("RANDOM ACTION PATH")
+                self.logger.log("=" * 40)
+                self.logger.log(f"Taking RANDOM action (random={random_value:.6f} < epsilon={self.epsilon:.6f})")
             
-            if random.random() < 0.3 and available_actions:  # 30% chance to wait
+            wait_chance = random.random()
+            if self.logger:
+                self.logger.log(f"Wait chance: {wait_chance:.6f} (30% threshold)")
+            
+            if wait_chance < 0.3 and available_actions:  # 30% chance to wait
                 if self.logger:
-                    self.logger.log("Random action: WAIT")
-                return GameAction(
+                    self.logger.log("Random action: WAIT (30% chance)")
+                action = GameAction(
                     action_type="wait",
                     timestamp=time.time(),
                     elixir_cost=0.0
                 )
+                if self.logger:
+                    self.logger.log(f"Generated wait action: {action}")
+                return action
             elif affordable_cards:
                 card_index = random.choice(affordable_cards)
                 position = (random.random(), random.random())
+                elixir_cost = card_elixir_costs[available_cards.index(card_index)]
                 if self.logger:
                     self.logger.log(f"Random action: PLAY_CARD {card_index} at {position}")
-                return GameAction(
+                    self.logger.log(f"  - Card index: {card_index}")
+                    self.logger.log(f"  - Position: {position}")
+                    self.logger.log(f"  - Elixir cost: {elixir_cost}")
+                action = GameAction(
                     action_type="play_card",
                     card_index=card_index,
                     position=position,
                     timestamp=time.time(),
-                    elixir_cost=card_elixir_costs[available_cards.index(card_index)]
+                    elixir_cost=elixir_cost
                 )
+                if self.logger:
+                    self.logger.log(f"Generated play_card action: {action}")
+                return action
             else:
                 if self.logger:
                     self.logger.log("Random action: WAIT (no affordable cards)")
-                return GameAction(
+                action = GameAction(
                     action_type="wait",
                     timestamp=time.time(),
                     elixir_cost=0.0
                 )
+                if self.logger:
+                    self.logger.log(f"Generated fallback wait action: {action}")
+                return action
         else:
             # Greedy action using neural network
             if self.logger:
-                self.logger.log(f"Taking GREEDY action (epsilon={self.epsilon:.3f})")
+                self.logger.log("=" * 40)
+                self.logger.log("GREEDY ACTION PATH")
+                self.logger.log("=" * 40)
+                self.logger.log(f"Taking GREEDY action (random={random_value:.6f} >= epsilon={self.epsilon:.6f})")
             
             with torch.no_grad():
+                if self.logger:
+                    self.logger.log("Converting state to tensor...")
                 state_tensor = state.to_tensor().unsqueeze(0).to(self.device)
+                if self.logger:
+                    self.logger.log(f"State tensor shape: {state_tensor.shape}")
+                    self.logger.log(f"State tensor device: {state_tensor.device}")
+                    self.logger.log(f"State tensor dtype: {state_tensor.dtype}")
+                    self.logger.log(f"State tensor min/max: {state_tensor.min().item():.6f}/{state_tensor.max().item():.6f}")
+                
+                if self.logger:
+                    self.logger.log("Forward pass through Q-network...")
                 q_values = self.q_network(state_tensor)
                 
                 if self.logger:
-                    self.logger.log(f"Q-values shape: {q_values.shape}, values: {q_values[0, :5].tolist()}")
+                    self.logger.log(f"Q-values shape: {q_values.shape}")
+                    self.logger.log(f"Q-values device: {q_values.device}")
+                    self.logger.log(f"Q-values dtype: {q_values.dtype}")
+                    self.logger.log(f"Raw Q-values: {q_values[0].tolist()}")
+                    self.logger.log(f"Action Q-values (first 5): {q_values[0, :5].tolist()}")
+                    self.logger.log(f"Position Q-values (last 2): {q_values[0, 5:7].tolist()}")
                 
                 # Action space: [wait, card0, card1, card2, card3, pos_x, pos_y]
                 # First 5 outputs: wait + 4 cards
                 action_q_values = q_values[0, :5]
                 
+                if self.logger:
+                    self.logger.log("Creating action masks...")
                 # Mask unavailable/unaffordable actions
                 masked_q_values = action_q_values.clone()
                 masked_q_values[0] = float('-inf')  # Mask wait initially
+                
+                if self.logger:
+                    self.logger.log(f"Initial masked values: {masked_q_values.tolist()}")
                 
                 # Check if we should wait (low elixir or no good plays)
                 if state.elixir_count < 2.0 or not affordable_cards:
                     masked_q_values[0] = action_q_values[0]  # Allow waiting
                     if self.logger:
                         self.logger.log(f"Allowing wait due to low elixir ({state.elixir_count}) or no affordable cards")
+                        self.logger.log(f"Updated masked values: {masked_q_values.tolist()}")
                 else:
                     # Mask unaffordable cards
+                    if self.logger:
+                        self.logger.log("Masking unaffordable cards...")
                     for i, card_idx in enumerate(available_cards):
                         if card_idx not in affordable_cards:
                             masked_q_values[card_idx + 1] = float('-inf')
+                            if self.logger:
+                                self.logger.log(f"  - Masked card {card_idx} (index {card_idx + 1})")
                     if self.logger:
-                        self.logger.log(f"Masked unaffordable cards, masked values: {masked_q_values.tolist()}")
+                        self.logger.log(f"Final masked values: {masked_q_values.tolist()}")
                 
                 # Select best action
+                if self.logger:
+                    self.logger.log("Selecting best action...")
                 action_idx = masked_q_values.argmax().item()
                 
                 if self.logger:
                     self.logger.log(f"Selected action index: {action_idx}")
+                    self.logger.log(f"Selected Q-value: {masked_q_values[action_idx].item():.6f}")
                 
                 if action_idx == 0:  # Wait action
                     if self.logger:
