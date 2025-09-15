@@ -79,6 +79,7 @@ JOBS = [
         extras={"deck_selector": ComboConfig("deck_number_selection", "Deck #:", values=[1, 2, 3, 4, 5], default=2)},
     ),
     JobConfig("random_plays_user_toggle", "Random plays", default=False),
+    JobConfig("movement_bot_user_toggle", "AI Movement Bot", default=False),
     JobConfig("disable_win_track_toggle", "Skip win/loss check", default=False),
     JobConfig("card_mastery_user_toggle", "Card Masteries", default=False),
     JobConfig("card_upgrade_user_toggle", "Upgrade Cards", default=False),

@@ -52,6 +52,7 @@ def make_job_dictionary(values: dict[str, str | int]) -> dict[str, str | int]:
         "random_decks_user_toggle": values["random_decks_user_toggle"],
         "deck_number_selection": values["deck_number_selection"],
         "random_plays_user_toggle": values["random_plays_user_toggle"],
+        "movement_bot_user_toggle": values["movement_bot_user_toggle"],
         "disable_win_track_toggle": values["disable_win_track_toggle"],
         "record_fights_toggle": values.get("record_fights_toggle", False),
     }

@@ -143,6 +143,7 @@ def do_2v2_fight_state(
     logger: Logger,
     random_fight_mode,
     recording_flag: bool = False,
+    movement_bot_mode: bool = False,
 ) -> bool:
     """Handle the entirety of the 2v2 battle state (start fight, do fight, end fight)."""
     # Use the same fight logic as 1v1, just with 2v2 mode
@@ -153,6 +154,7 @@ def do_2v2_fight_state(
         "Classic 2v2",
         called_from_launching=False,
         recording_flag=recording_flag,
+        movement_bot_mode=movement_bot_mode,
     )
 
 

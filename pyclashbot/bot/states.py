@@ -338,6 +338,7 @@ def state_tree(
             return state_order.next_state(state)
 
         random_plays_flag = job_list.get("random_plays_user_toggle", False)
+        movement_bot_flag = job_list.get("movement_bot_user_toggle", False)
 
         recording_flag = job_list.get("record_fights_toggle", False)
         if (
@@ -348,6 +349,7 @@ def state_tree(
                 mode_used_in_1v1,
                 False,
                 recording_flag,
+                movement_bot_flag,
             )
             is False
         ):
@@ -364,6 +366,7 @@ def state_tree(
             return state_order.next_state(state)
 
         random_plays_flag = job_list.get("random_plays_user_toggle", False)
+        movement_bot_flag = job_list.get("movement_bot_user_toggle", False)
 
         recording_flag = job_list.get("record_fights_toggle", False)
         if (
@@ -372,6 +375,7 @@ def state_tree(
                 logger,
                 random_plays_flag,
                 recording_flag,
+                movement_bot_flag,
             )
             is False
         ):
