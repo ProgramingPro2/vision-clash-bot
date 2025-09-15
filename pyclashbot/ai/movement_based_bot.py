@@ -206,17 +206,26 @@ class MovementBasedBot:
                     # Use EXACT same pixel comparison as original bot's count_elixer()
                     if pixel_is_equal(frame[y, x], ELIXIR_COLOR, tol=65):
                         elixir_count = test_amount  # This amount is available
+                        if self.frame_count % 10 == 0:  # Log successful detections
+                            self.logger.log(f"  - SUCCESS: Test {test_amount} elixir at ({x},{y}) is purple!")
                     else:
                         # If this elixir dot is not visible, we've found the max
+                        if self.frame_count % 10 == 0:  # Log failed detections
+                            pixel = frame[y, x]
+                            self.logger.log(f"  - FAILED: Test {test_amount} elixir at ({x},{y}) is {pixel.tolist()}, not purple")
                         break
                 else:
                     # If coordinates are out of bounds, we've found the max
+                    if self.frame_count % 10 == 0:  # Log out of bounds
+                        self.logger.log(f"  - OUT OF BOUNDS: Test {test_amount} elixir at ({x},{y}) is outside frame {frame.shape}")
                     break
             
-            if self.frame_count % 30 == 0:  # Log every 30 frames
+            if self.frame_count % 10 == 0:  # Log every 10 frames for debugging
                 self.logger.log(f"Frame elixir detection: found {elixir_count} elixir using original bot method")
-                # Log the test results for debugging
-                for test_amount in range(1, min(6, elixir_count + 2)):  # Log first 5 tests
+                self.logger.log(f"Frame shape: {frame.shape}")
+                self.logger.log(f"ELIXIR_COLOR: {ELIXIR_COLOR}")
+                # Log ALL test results for debugging
+                for test_amount in range(1, 11):  # Test all 10 elixir amounts
                     coord = ELIXIR_COORDS[test_amount - 1]
                     x, y = coord[0], coord[1]
                     if y < frame.shape[0] and x < frame.shape[1]:
@@ -224,7 +233,7 @@ class MovementBasedBot:
                         is_elixir = pixel_is_equal(pixel, ELIXIR_COLOR, tol=65)
                         self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): {pixel.tolist()} -> {is_elixir}")
                     else:
-                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): OUT OF BOUNDS")
+                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): OUT OF BOUNDS (frame: {frame.shape})")
             
             return float(elixir_count)
             
@@ -284,18 +293,20 @@ class MovementBasedBot:
                     # If coordinates are out of bounds, we've found the max
                     break
             
-            if self.frame_count % 30 == 0:  # Log every 30 frames
+            if self.frame_count % 10 == 0:  # Log every 10 frames for debugging
                 self.logger.log(f"Emulator elixir detection: found {elixir_count} elixir using original bot method")
-                # Log the test results for debugging
-                for test_amount in range(1, min(6, elixir_count + 2)):  # Log first 5 tests
+                self.logger.log(f"Emulator frame shape: {iar.shape}")
+                self.logger.log(f"ELIXIR_COLOR: {ELIXIR_COLOR}")
+                # Log ALL test results for debugging
+                for test_amount in range(1, 11):  # Test all 10 elixir amounts
                     coord = ELIXIR_COORDS[test_amount - 1]
                     x, y = coord[0], coord[1]
                     if y < iar.shape[0] and x < iar.shape[1]:
                         pixel = iar[y, x]
                         is_elixir = pixel_is_equal(pixel, ELIXIR_COLOR, tol=65)
-                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): {pixel.tolist()} -> {is_elixir}")
+                        self.logger.log(f"  - Emulator test {test_amount} elixir at ({x},{y}): {pixel.tolist()} -> {is_elixir}")
                     else:
-                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): OUT OF BOUNDS")
+                        self.logger.log(f"  - Emulator test {test_amount} elixir at ({x},{y}): OUT OF BOUNDS (frame: {iar.shape})")
             
             return float(elixir_count)
             
