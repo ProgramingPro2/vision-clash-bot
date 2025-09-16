@@ -52,6 +52,14 @@ class TowerHealthDetector:
             'own_right': None
         }
         
+        # Track last successful health readings
+        self.last_health = {
+            'enemy_left': None,
+            'enemy_right': None,
+            'own_left': None,
+            'own_right': None
+        }
+        
         # OCR configuration
         self.ocr_config = '--oem 3 --psm 8 -c tessedit_char_whitelist=0123456789'
         
@@ -217,8 +225,8 @@ class TowerHealthDetector:
             if self._detect_health_bar_presence(region):
                 self.towers_damaged[region_name] = True
             else:
-                # No health bar yet, tower is at full health
-                return None, 0.0  # Return None to indicate no health bar visible
+                # No health bar yet, assume tower is at full health (1000 for arena towers)
+                return 1000, 0.5  # Return full health with medium confidence
         
         # Tower has been damaged, try to read health
         health_value, confidence = self.detect_tower_health_combined(region)
@@ -228,15 +236,22 @@ class TowerHealthDetector:
             if self.initial_health[region_name] is None:
                 if health_value > 100:
                     self.initial_health[region_name] = health_value
+                    self.last_health[region_name] = health_value
                     return health_value, confidence
                 else:
-                    # Invalid initial health, return None for this round
+                    # Invalid initial health, return last known health if available
+                    if self.last_health[region_name] is not None:
+                        return self.last_health[region_name], 0.3
                     return None, 0.0
             else:
                 # Tower already has valid initial health, return current value
+                self.last_health[region_name] = health_value
                 return health_value, confidence
         else:
-            # No text found, assume health=0 (tower destroyed)
+            # No text found, return last known health if available
+            if self.last_health[region_name] is not None:
+                return self.last_health[region_name], 0.3
+            # If no previous health and no text, assume tower destroyed
             return 0, 0.8  # High confidence for destroyed tower
     
     def _detect_health_bar_presence(self, region: np.ndarray) -> bool:
@@ -380,7 +395,30 @@ class TowerHealthDetector:
         
         return vis_frame
     
-    def update_tower_regions(self, screen_width: int, screen_height: int):
+    def reset_for_new_battle(self):
+        """Reset health detection state for a new battle."""
+        self.towers_damaged = {
+            'enemy_left': False,
+            'enemy_right': False,
+            'own_left': False,
+            'own_right': False
+        }
+        
+        self.initial_health = {
+            'enemy_left': None,
+            'enemy_right': None,
+            'own_left': None,
+            'own_right': None
+        }
+        
+        self.last_health = {
+            'enemy_left': None,
+            'enemy_right': None,
+            'own_left': None,
+            'own_right': None
+        }
+    
+def update_tower_regions(self, screen_width: int, screen_height: int):
         """
         Update tower regions based on screen dimensions.
         

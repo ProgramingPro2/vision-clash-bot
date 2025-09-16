@@ -18,6 +18,19 @@ from ..utils.logger import Logger
 from .dqn_agent import DQNAgent, GameAction, GameReward, GameState, GameStateProcessor
 from ..bot.card_detection import check_which_cards_are_available, identify_hand_cards, get_card_group
 
+# Emote coordinates (from original bot)
+EMOTE_BUTTON_COORD = (67, 521)
+EMOTE_ICON_COORDS = [
+    (124, 419),
+    (182, 420),
+    (255, 411),
+    (312, 423),
+    (133, 471),
+    (188, 472),
+    (243, 469),
+    (308, 470),
+]
+
 
 @dataclass
 class BotConfig:
@@ -54,6 +67,10 @@ class BotConfig:
     enable_visualization: bool = True
     save_training_data: bool = True
     collect_training_data: bool = True  # Always collect data for training
+    
+    # Emote settings (like original bot)
+    enable_emotes: bool = True
+    emote_chance: float = 0.1  # 10% chance to emote after playing a card
     
     def __post_init__(self):
         if self.movement_detection_config is None:
@@ -542,6 +559,28 @@ class MovementBasedBot:
             # Final fallback
             return 5.0
     
+    def send_emote(self):
+        """Send a random emote (like the original bot)."""
+        if not self.config.enable_emotes or not self.emulator:
+            return
+        
+        try:
+            self.logger.log("Hitting an emote")
+            
+            # Click emote button
+            self.emulator.click(EMOTE_BUTTON_COORD[0], EMOTE_BUTTON_COORD[1])
+            time.sleep(0.33)
+            
+            # Click random emote icon
+            import random
+            emote_coord = random.choice(EMOTE_ICON_COORDS)
+            self.emulator.click(emote_coord[0], emote_coord[1])
+            
+            self.logger.log("Emote sent successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to send emote: {e}")
+    
     def _get_card_elixir_costs(self, available_cards: List[int]) -> List[float]:
         """
         Get elixir costs for available cards by identifying them and looking up costs.
@@ -882,6 +921,12 @@ class MovementBasedBot:
                 
                 # Check for unit detection in next few frames
                 self._check_detection_success(action)
+                
+                # Send emote with configured chance (like original bot)
+                if self.config.enable_emotes:
+                    import random
+                    if random.random() < self.config.emote_chance:
+                        self.send_emote()
                 
             except Exception as e:
                 self.logger.error(f"Failed to execute card action: {e}")

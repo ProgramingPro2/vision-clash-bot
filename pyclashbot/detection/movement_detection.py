@@ -63,6 +63,10 @@ class MovementDetector:
             history=500, varThreshold=16, detectShadows=True
         )
         
+        # Bridge mask to ignore scenery movement
+        self.bridge_mask = None
+        self.bridge_mask_created = False
+        
     def preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
         """Preprocess frame for movement detection."""
         # Convert to grayscale
@@ -75,6 +79,61 @@ class MovementDetector:
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
         return blurred
+    
+    def create_bridge_mask(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Create a mask to ignore bridge tiles and scenery movement.
+        Based on screenshot analysis of 253x384px image.
+        
+        Args:
+            frame: Input frame
+            
+        Returns:
+            Binary mask where 0 = ignore (bridge/scenery), 255 = detect movement
+        """
+        height, width = frame.shape[:2]
+        mask = np.zeros((height, width), dtype=np.uint8)  # Start with all ignored
+        
+        # Reference screenshot dimensions: 253x384px
+        ref_width, ref_height = 253, 384
+        
+        # Calculate scaling factors
+        scale_x = width / ref_width
+        scale_y = height / ref_height
+        
+        # Main detection area: 35,30 to 225,280 (normalized from screenshot)
+        # This is the only area we want to use for movement detection
+        main_x1 = int(35 * scale_x)
+        main_y1 = int(30 * scale_y)
+        main_x2 = int(225 * scale_x)
+        main_y2 = int(280 * scale_y)
+        
+        # Set main detection area to 255 (detect movement)
+        mask[main_y1:main_y2, main_x1:main_x2] = 255
+        
+        # Areas to ignore (set to 0):
+        # 1. 195,145 to 170,250 (bridge area - note: x1 > x2, so this is a vertical strip)
+        ignore1_x1 = int(170 * scale_x)
+        ignore1_x2 = int(195 * scale_x)
+        ignore1_y1 = int(145 * scale_y)
+        ignore1_y2 = int(250 * scale_y)
+        mask[ignore1_y1:ignore1_y2, ignore1_x1:ignore1_x2] = 0
+        
+        # 2. 80,155 to 175,170 (horizontal strip)
+        ignore2_x1 = int(80 * scale_x)
+        ignore2_x2 = int(175 * scale_x)
+        ignore2_y1 = int(155 * scale_y)
+        ignore2_y2 = int(170 * scale_y)
+        mask[ignore2_y1:ignore2_y2, ignore2_x1:ignore2_x2] = 0
+        
+        # 3. 0,145 to 65,170 (left edge)
+        ignore3_x1 = int(0 * scale_x)
+        ignore3_x2 = int(65 * scale_x)
+        ignore3_y1 = int(145 * scale_y)
+        ignore3_y2 = int(170 * scale_y)
+        mask[ignore3_y1:ignore3_y2, ignore3_x1:ignore3_x2] = 0
+        
+        return mask
     
     def detect_movement_negative_diff(self, frame: np.ndarray) -> np.ndarray:
         """
@@ -100,6 +159,14 @@ class MovementDetector:
         # Apply threshold
         _, thresh = cv2.threshold(diff, self.threshold, 255, cv2.THRESH_BINARY)
         
+        # Apply bridge mask to ignore scenery movement
+        if not self.bridge_mask_created:
+            self.bridge_mask = self.create_bridge_mask(frame)
+            self.bridge_mask_created = True
+        
+        # Apply bridge mask
+        thresh = cv2.bitwise_and(thresh, self.bridge_mask)
+        
         # Apply morphological operations to clean up
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, self.kernel)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, self.kernel)
@@ -120,6 +187,14 @@ class MovementDetector:
         
         # Apply background subtraction
         fg_mask = self.bg_subtractor.apply(processed_frame)
+        
+        # Apply bridge mask to ignore scenery movement
+        if not self.bridge_mask_created:
+            self.bridge_mask = self.create_bridge_mask(frame)
+            self.bridge_mask_created = True
+        
+        # Apply bridge mask
+        fg_mask = cv2.bitwise_and(fg_mask, self.bridge_mask)
         
         # Apply morphological operations
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, self.kernel)
