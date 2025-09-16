@@ -45,7 +45,7 @@ class BotConfig:
     dqn_action_size: int = 7  # 1 wait + 4 cards + 2 position outputs (x, y)
     
     # Auto-save settings
-    auto_save_interval: int = 10  # Save every N battles
+    auto_save_interval: int = 1  # Save every N battles
     auto_save_on_exit: bool = True
     max_backup_models: int = 5  # Keep N backup models
     
