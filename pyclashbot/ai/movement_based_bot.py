@@ -195,13 +195,20 @@ class MovementBasedBot:
             ]
             ELIXIR_COLOR = [240, 137, 244]
             
-            # Test each elixir amount from 1-10 using the EXACT same logic as count_elixer()
+            # Calculate scaled coordinates based on actual frame size
+            original_width, original_height = 633, 419  # Original bot's expected resolution
+            actual_width, actual_height = frame.shape[1], frame.shape[0]
+            scale_x = actual_width / original_width
+            scale_y = actual_height / original_height
+            
+            # Test each elixir amount from 1-10 using EXACT same logic as original bot
             elixir_count = 0
             for test_amount in range(1, 11):  # Test 1 through 10
-                coord = ELIXIR_COORDS[test_amount - 1]  # -1 because array is 0-indexed
-                x, y = coord[0], coord[1]
+                # Use EXACT same coordinate access as original bot: ELIXIR_COORDS[elixer_count - 1][0], ELIXIR_COORDS[elixer_count - 1][1]
+                x = ELIXIR_COORDS[test_amount - 1][0]  # x coordinate
+                y = ELIXIR_COORDS[test_amount - 1][1]  # y coordinate
                 
-                # Check if coordinates are within frame bounds
+                # Check if coordinates are within frame bounds (no scaling needed - original bot works!)
                 if y < frame.shape[0] and x < frame.shape[1]:
                     # Use EXACT same pixel comparison as original bot's count_elixer()
                     if pixel_is_equal(frame[y, x], ELIXIR_COLOR, tol=65):
@@ -224,16 +231,33 @@ class MovementBasedBot:
                 self.logger.log(f"Frame elixir detection: found {elixir_count} elixir using original bot method")
                 self.logger.log(f"Frame shape: {frame.shape}")
                 self.logger.log(f"ELIXIR_COLOR: {ELIXIR_COLOR}")
+                
+                # Calculate scaled coordinates based on actual frame size
+                # Original coordinates are for a specific resolution, need to scale them
+                original_width, original_height = 633, 419  # Original bot's expected resolution
+                actual_width, actual_height = frame.shape[1], frame.shape[0]
+                scale_x = actual_width / original_width
+                scale_y = actual_height / original_height
+                
+                self.logger.log(f"Original resolution: {original_width}x{original_height}")
+                self.logger.log(f"Actual resolution: {actual_width}x{actual_height}")
+                self.logger.log(f"Scale factors: x={scale_x:.3f}, y={scale_y:.3f}")
+                
                 # Log ALL test results for debugging
                 for test_amount in range(1, 11):  # Test all 10 elixir amounts
                     coord = ELIXIR_COORDS[test_amount - 1]
                     x, y = coord[0], coord[1]
-                    if y < frame.shape[0] and x < frame.shape[1]:
-                        pixel = frame[y, x]
+                    
+                    # Scale coordinates to match actual frame size
+                    scaled_x = int(x * scale_x)
+                    scaled_y = int(y * scale_y)
+                    
+                    if scaled_y < frame.shape[0] and scaled_x < frame.shape[1]:
+                        pixel = frame[scaled_y, scaled_x]
                         is_elixir = pixel_is_equal(pixel, ELIXIR_COLOR, tol=65)
-                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): {pixel.tolist()} -> {is_elixir}")
+                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}) -> scaled ({scaled_x},{scaled_y}): {pixel.tolist()} -> {is_elixir}")
                     else:
-                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}): OUT OF BOUNDS (frame: {frame.shape})")
+                        self.logger.log(f"  - Test {test_amount} elixir at ({x},{y}) -> scaled ({scaled_x},{scaled_y}): OUT OF BOUNDS (frame: {frame.shape})")
             
             return float(elixir_count)
             
@@ -269,44 +293,42 @@ class MovementBasedBot:
             ]
             ELIXIR_COLOR = [240, 137, 244]
             
-            # Get fresh screenshot from emulator
+            # Get fresh screenshot from emulator (EXACT same as original bot)
             iar = self.emulator.screenshot()
             if iar is None:
                 self.logger.error("Emulator screenshot returned None")
                 return 5.0
             
-            # Test each elixir amount from 1-10 using the EXACT same logic as count_elixer()
+            # Test each elixir amount from 1-10 using EXACT same logic as original bot
             elixir_count = 0
             for test_amount in range(1, 11):  # Test 1 through 10
-                coord = ELIXIR_COORDS[test_amount - 1]  # -1 because array is 0-indexed
-                x, y = coord[0], coord[1]
+                # Use EXACT same coordinate access as original bot: ELIXIR_COORDS[elixer_count - 1][0], ELIXIR_COORDS[elixer_count - 1][1]
+                x = ELIXIR_COORDS[test_amount - 1][0]  # x coordinate
+                y = ELIXIR_COORDS[test_amount - 1][1]  # y coordinate
                 
                 # Check if coordinates are within frame bounds
                 if y < iar.shape[0] and x < iar.shape[1]:
                     # Use EXACT same pixel comparison as original bot's count_elixer()
                     if pixel_is_equal(iar[y, x], ELIXIR_COLOR, tol=65):
                         elixir_count = test_amount  # This amount is available
+                        if self.frame_count % 10 == 0:  # Log successful detections
+                            self.logger.log(f"  - SUCCESS: Test {test_amount} elixir at ({x},{y}) is purple!")
                     else:
                         # If this elixir dot is not visible, we've found the max
+                        if self.frame_count % 10 == 0:  # Log failed detections
+                            pixel = iar[y, x]
+                            self.logger.log(f"  - FAILED: Test {test_amount} elixir at ({x},{y}) is {pixel.tolist()}, not purple")
                         break
                 else:
                     # If coordinates are out of bounds, we've found the max
+                    if self.frame_count % 10 == 0:  # Log out of bounds
+                        self.logger.log(f"  - OUT OF BOUNDS: Test {test_amount} elixir at ({x},{y}) is outside frame {iar.shape}")
                     break
             
             if self.frame_count % 10 == 0:  # Log every 10 frames for debugging
                 self.logger.log(f"Emulator elixir detection: found {elixir_count} elixir using original bot method")
                 self.logger.log(f"Emulator frame shape: {iar.shape}")
                 self.logger.log(f"ELIXIR_COLOR: {ELIXIR_COLOR}")
-                # Log ALL test results for debugging
-                for test_amount in range(1, 11):  # Test all 10 elixir amounts
-                    coord = ELIXIR_COORDS[test_amount - 1]
-                    x, y = coord[0], coord[1]
-                    if y < iar.shape[0] and x < iar.shape[1]:
-                        pixel = iar[y, x]
-                        is_elixir = pixel_is_equal(pixel, ELIXIR_COLOR, tol=65)
-                        self.logger.log(f"  - Emulator test {test_amount} elixir at ({x},{y}): {pixel.tolist()} -> {is_elixir}")
-                    else:
-                        self.logger.log(f"  - Emulator test {test_amount} elixir at ({x},{y}): OUT OF BOUNDS (frame: {iar.shape})")
             
             return float(elixir_count)
             
@@ -425,12 +447,8 @@ class MovementBasedBot:
             # Game state processing
             game_state = None
             if self.dqn_agent and tracked_units and tower_health:
-                # Try to detect actual elixir from the game screen
-                elixir_count = self._detect_elixir_from_frame(frame)
-                
-                # If frame-based detection fails, try emulator-based detection
-                if elixir_count == 0.0 and self.emulator:
-                    elixir_count = self._detect_elixir_from_emulator()
+                # Use emulator-based detection (like original bot) instead of frame-based
+                elixir_count = self._detect_elixir_from_emulator()
                 
                 if self.frame_count % 5 == 0:
                     self.logger.log("STEP 4: GAME STATE CREATION")
