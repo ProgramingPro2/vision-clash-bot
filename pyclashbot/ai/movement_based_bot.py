@@ -279,6 +279,9 @@ class MovementBasedBot:
         self.last_save_time = time.time()
         self.model_save_history = []
         
+        # Emote cooldown to prevent conflicts with card placement
+        self.emote_cooldown_end = 0
+        
         # Threading for real-time processing
         self.processing_queue = queue.Queue(maxsize=10)
         self.result_queue = queue.Queue(maxsize=10)
@@ -567,6 +570,9 @@ class MovementBasedBot:
         try:
             self.logger.log("Hitting an emote")
             
+            # Set emote cooldown (2 seconds to prevent conflicts)
+            self.emote_cooldown_end = time.time() + 2.0
+            
             # Click emote button
             self.emulator.click(EMOTE_BUTTON_COORD[0], EMOTE_BUTTON_COORD[1])
             time.sleep(0.33)
@@ -580,6 +586,10 @@ class MovementBasedBot:
             
         except Exception as e:
             self.logger.error(f"Failed to send emote: {e}")
+    
+    def is_emote_cooldown_active(self) -> bool:
+        """Check if emote cooldown is currently active."""
+        return time.time() < self.emote_cooldown_end
     
     def _get_card_elixir_costs(self, available_cards: List[int]) -> List[float]:
         """
@@ -675,13 +685,23 @@ class MovementBasedBot:
             if self.movement_detector:
                 if self.frame_count % 5 == 0:
                     self.logger.log("  - Movement detector available, detecting units...")
-                detection_start = time.time()
-                detected_blobs = self.movement_detector.detect_units(frame)
-                detection_time = time.time() - detection_start
+                
+                # Skip movement detection during emote cooldown to avoid conflicts
+                if self.is_emote_cooldown_active():
+                    if self.frame_count % 5 == 0:
+                        self.logger.log("  - Skipping movement detection - emote cooldown active")
+                    detected_blobs = []
+                    detection_time = 0.0
+                else:
+                    detection_start = time.time()
+                    detected_blobs = self.movement_detector.detect_units(frame)
+                    detection_time = time.time() - detection_start
+                
                 results['detected_units'] = detected_blobs
                 
                 if self.frame_count % 5 == 0:
-                    self.logger.log(f"  - Detection completed in {detection_time:.6f}s")
+                    if detection_time > 0:
+                        self.logger.log(f"  - Detection completed in {detection_time:.6f}s")
                     self.logger.log(f"  - Detected {len(detected_blobs)} units")
                     for i, blob in enumerate(detected_blobs):
                         self.logger.log(f"    Unit {i}: area={blob.area}, centroid={blob.centroid}")
@@ -899,6 +919,13 @@ class MovementBasedBot:
             return action
         
         elif action.action_type == "play_card":
+            # Check if emote cooldown is active - don't place cards during emote
+            if self.is_emote_cooldown_active():
+                self.logger.log("Skipping card placement - emote cooldown active")
+                action.placement_success = False
+                action.detection_success = False
+                return action
+            
             try:
                 # Convert normalized position to screen coordinates
                 screen_width, screen_height = 419, 633  # Clash Royale screen dimensions
