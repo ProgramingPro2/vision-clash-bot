@@ -16,7 +16,7 @@ from ..detection.tower_health_detection import TowerHealthDetector, TowerHealthD
 from ..detection.unit_tracking import TrackedUnit, UnitTracker, UnitTrackerConfig
 from ..utils.logger import Logger
 from .dqn_agent import DQNAgent, GameAction, GameReward, GameState, GameStateProcessor
-from ..bot.card_detection import check_which_cards_are_available, identify_hand_cards
+from ..bot.card_detection import check_which_cards_are_available, identify_hand_cards, get_card_group
 
 
 @dataclass
@@ -62,6 +62,160 @@ class BotConfig:
             self.unit_tracking_config = UnitTrackerConfig()
         if self.tower_health_config is None:
             self.tower_health_config = TowerHealthDetectorConfig()
+
+
+# Card cost lookup based on card groups/classes (Updated August 2025)
+CARD_GROUP_COSTS = {
+    # Spells (typically 1-6 elixir)
+    "zap": 2.0,           # Zap, Goblin Curse, Void
+    "arrows": 3.0,        # Arrows
+    "snowball": 2.0,      # Snowball, Giant Snowball
+    "log": 2.0,           # Log, Barbarian Barrel
+    "fireball": 4.0,      # Fireball
+    "poison": 4.0,        # Poison
+    "freeze": 4.0,        # Freeze
+    "earthquake": 3.0,    # Earthquake
+    "rocket": 6.0,        # Rocket
+    "lightning": 6.0,     # Lightning
+    "tornado": 3.0,       # Tornado
+    
+    # Win conditions (typically 3-6 elixir)
+    "hog": 4.0,           # Hog, Battle Ram, Ram Rider, etc.
+    "miner": 3.0,         # Miner
+    "goblin_barrel": 3.0, # Goblin Barrel
+    "goblin_drill": 4.0,  # Goblin Drill
+    "graveyard": 5.0,     # Graveyard
+    "xbow": 6.0,          # X-Bow, Mortar
+    
+    # Buildings (typically 3-6 elixir)
+    "turret": 4.0,        # Cannon, Tesla, Bomb Tower, etc.
+    "spawner": 5.0,       # Furnace, Goblin Hut, Barbarian Hut, etc.
+    
+    # Support troops (typically 3-5 elixir) - Updated for August 2025
+    "long_range": 4.0,    # Witch, Night Witch (Wizard moved to 4 elixir)
+    "princess": 3.0,      # Princess
+    "bigboi": 7.0,        # Mega Knight, Royal Delivery, Mighty Miner
+    
+    # Default fallback
+    "No group": 4.0,      # Unknown cards
+}
+
+# Individual card costs for more precise detection (Updated August 2025)
+INDIVIDUAL_CARD_COSTS = {
+    # 1 elixir cards
+    "skeletons": 1.0,
+    "ice_spirit": 1.0,
+    "fire_spirit": 1.0,
+    "electro_spirit": 1.0,
+    "heal_spirit": 1.0,
+    
+    # 2 elixir cards
+    "zap": 2.0,
+    "gob_curse": 2.0,
+    "void": 2.0,
+    "snowball": 2.0,
+    "log": 2.0,
+    "ice_golem": 2.0,
+    "goblins": 2.0,
+    "spear_goblins": 2.0,
+    "bats": 2.0,
+    "fire_cracker": 2.0,
+    "evo_fire_cracker": 2.0,
+    "wall_breakers": 2.0,
+    "barbarian_barrel": 2.0,
+    "giant_snowball": 2.0,
+    
+    # 3 elixir cards
+    "miner": 3.0,
+    "goblin_barrel": 3.0,
+    "evo_goblin_barrel": 3.0,
+    "princess": 3.0,
+    "knight": 3.0,
+    "archers": 3.0,
+    "dart_goblin": 3.0,
+    "earthquake": 3.0,
+    "tornado": 3.0,
+    "cannon": 3.0,
+    "tesla": 3.0,
+    "goblin_cage": 3.0,
+    "tombstone": 3.0,
+    "bomber": 3.0,
+    "minions": 3.0,
+    "skeleton_army": 3.0,
+    "clone": 3.0,
+    "ice_wizard": 3.0,
+    "mega_minion": 3.0,
+    "arrows": 3.0,
+    "bandit": 3.0,
+    "goblin_gang": 3.0,
+    "guards": 3.0,
+    "heal": 3.0,
+    
+    # 4 elixir cards (Updated August 2025 - Wizard reduced from 5 to 4)
+    "hog": 4.0,
+    "battle_ram": 4.0,
+    "evo_battle_ram": 4.0,
+    "ram_rider": 4.0,
+    "fireball": 4.0,
+    "poison": 4.0,
+    "freeze": 4.0,
+    "bomb_tower": 4.0,
+    "inferno_tower": 4.0,
+    "wizard": 4.0,  # UPDATED: Reduced from 5 to 4 in August 2025
+    "flying_machine": 4.0,
+    "magic_archer": 4.0,
+    "valkyrie": 4.0,
+    "musketeer": 4.0,
+    "goblin_drill": 4.0,
+    "skeleton_barrel": 4.0,
+    "royal_hogs": 4.0,
+    "baby_dragon": 4.0,
+    "mini_pekka": 4.0,
+    "dark_prince": 4.0,
+    "lumberjack": 4.0,
+    "furnace": 4.0,
+    "mortar": 4.0,
+    "night_witch": 4.0,
+    "electro_wizard": 4.0,
+    "inferno_dragon": 4.0,
+    
+    # 5 elixir cards
+    "graveyard": 5.0,
+    "witch": 5.0,
+    "barbarians": 5.0,
+    "minion_horde": 5.0,
+    "balloon": 5.0,
+    "giant": 5.0,
+    "prince": 5.0,
+    "executioner": 5.0,
+    "cannon_cart": 5.0,
+    "goblin_hut": 5.0,
+    "barbarian_hut": 5.0,
+    "bowler": 5.0,
+    
+    # 6 elixir cards
+    "rocket": 6.0,
+    "lightning": 6.0,
+    "xbow": 6.0,
+    "sparky": 6.0,
+    "elite_barbarians": 6.0,
+    "royal_giant": 6.0,
+    "giant_skeleton": 6.0,
+    "elixir_collector": 6.0,
+    
+    # 7 elixir cards
+    "mega_knight": 7.0,
+    "royal_delivery": 7.0,
+    "mighty_miner": 7.0,
+    "pekka": 7.0,
+    "lava_hound": 7.0,
+    
+    # 8 elixir cards
+    "golem": 8.0,
+    
+    # 9 elixir cards
+    "three_musketeers": 9.0,
+}
 
 
 class MovementBasedBot:
@@ -270,6 +424,7 @@ class MovementBasedBot:
         """
         Detect elixir count using the EXACT same method as the original bot.
         Test each elixir amount from 1-10 until we find the exact amount.
+        Falls back to game mechanics estimation if detection fails.
         
         Returns:
             Detected elixir count (0-10)
@@ -335,8 +490,107 @@ class MovementBasedBot:
             
         except Exception as e:
             self.logger.error(f"Error detecting elixir from emulator: {e}")
-            # Fallback to a reasonable default
+            # Fallback to game mechanics estimation
+            return self._estimate_elixir_from_game_mechanics()
+    
+    def _estimate_elixir_from_game_mechanics(self) -> float:
+        """
+        Backup elixir estimation based on Clash Royale game mechanics.
+        
+        Game mechanics (Updated August 2025):
+        - Players start with 5 elixir
+        - Elixir regenerates at 1 elixir every 2.8 seconds (normal)
+        - Elixir regenerates at 1 elixir every 1.4 seconds (double elixir, after 2 minutes)
+        - Elixir regenerates at 1 elixir every 0.93 seconds (triple elixir, overtime)
+        - Maximum elixir is 10
+        
+        Returns:
+            Estimated elixir count (0-10)
+        """
+        try:
+            # Get battle elapsed time
+            elapsed_time = time.time() - self.battle_start_time
+            
+            # Start with 5 elixir (game mechanics)
+            base_elixir = 5.0
+            
+            # Calculate elixir regeneration based on time
+            if elapsed_time < 120:  # First 2 minutes - normal elixir (2.8s per elixir)
+                regenerated_elixir = elapsed_time / 2.8
+            elif elapsed_time < 180:  # 2-3 minutes - double elixir (1.4s per elixir)
+                # First 2 minutes at normal rate, then double rate
+                normal_elixir = 120 / 2.8
+                double_elixir = (elapsed_time - 120) / 1.4
+                regenerated_elixir = normal_elixir + double_elixir
+            else:  # 3+ minutes - triple elixir (0.93s per elixir)
+                # First 2 minutes normal, next minute double, then triple
+                normal_elixir = 120 / 2.8
+                double_elixir = 60 / 1.4
+                triple_elixir = (elapsed_time - 180) / 0.93
+                regenerated_elixir = normal_elixir + double_elixir + triple_elixir
+            
+            # Total elixir = starting + regenerated, capped at 10
+            total_elixir = min(base_elixir + regenerated_elixir, 10.0)
+            
+            if self.frame_count % 30 == 0:  # Log every 30 frames
+                self.logger.log(f"BACKUP: Estimated elixir from game mechanics: {total_elixir:.1f} (elapsed: {elapsed_time:.1f}s)")
+            
+            return total_elixir
+            
+        except Exception as e:
+            self.logger.error(f"Error in backup elixir estimation: {e}")
+            # Final fallback
             return 5.0
+    
+    def _get_card_elixir_costs(self, available_cards: List[int]) -> List[float]:
+        """
+        Get elixir costs for available cards by identifying them and looking up costs.
+        
+        Args:
+            available_cards: List of card indices (0-3)
+            
+        Returns:
+            List of elixir costs for each card
+        """
+        if not self.emulator or not available_cards:
+            return [4.0] * 4  # Default fallback
+        
+        card_costs = []
+        
+        for card_index in range(4):  # Always check all 4 card slots
+            if card_index in available_cards:
+                try:
+                    # Identify the card
+                    card_identity = identify_hand_cards(self.emulator, card_index)
+                    
+                    # Try individual card lookup first
+                    if card_identity in INDIVIDUAL_CARD_COSTS:
+                        cost = INDIVIDUAL_CARD_COSTS[card_identity]
+                        if self.frame_count % 30 == 0:
+                            self.logger.log(f"  - Card {card_index} ({card_identity}): {cost} elixir (individual lookup)")
+                    else:
+                        # Fall back to group-based lookup
+                        card_group = get_card_group(card_identity)
+                        cost = CARD_GROUP_COSTS.get(card_group, 4.0)  # Default to 4 elixir
+                        if self.frame_count % 30 == 0:
+                            self.logger.log(f"  - Card {card_index} ({card_identity}, group: {card_group}): {cost} elixir (group lookup)")
+                    
+                    card_costs.append(cost)
+                    
+                except Exception as e:
+                    # Fallback to default cost
+                    cost = 4.0
+                    card_costs.append(cost)
+                    if self.frame_count % 30 == 0:
+                        self.logger.log(f"  - Card {card_index}: {cost} elixir (fallback due to error: {e})")
+            else:
+                # Card not available, use default cost
+                card_costs.append(4.0)
+        
+        if self.frame_count % 30 == 0:
+            self.logger.log(f"Final card costs: {card_costs}")
+        
+        return card_costs
     
     def process_frame(self, frame: np.ndarray) -> Dict[str, Any]:
         """
@@ -500,8 +754,8 @@ class MovementBasedBot:
                 # Get available cards from hand
                 available_cards = check_which_cards_are_available(self.emulator)
                 
-                # Get elixir costs for cards (placeholder - would need actual detection)
-                card_elixir_costs = [3.0, 3.0, 3.0, 3.0]  # Default costs
+                # Get elixir costs for cards using card identification
+                card_elixir_costs = self._get_card_elixir_costs(available_cards)
                 
                 if self.frame_count % 30 == 0:
                     self.logger.log(f"Available cards: {available_cards}, costs: {card_elixir_costs}")

@@ -264,14 +264,17 @@ class DQNAgent:
             self.logger.log(f"Q-network parameters: {sum(p.numel() for p in self.q_network.parameters())} total params")
         
         # Check which cards we can afford
+        # Normalize card costs to match elixir normalization (0-1 range)
         affordable_cards = []
         if self.logger:
             self.logger.log("Checking card affordability:")
         for i, card_idx in enumerate(available_cards):
             cost = card_elixir_costs[i]
-            can_afford = cost <= state.elixir_count
+            # Normalize card cost to match elixir normalization (divide by 10)
+            normalized_cost = cost / 10.0
+            can_afford = normalized_cost <= state.elixir_count
             if self.logger:
-                self.logger.log(f"  - Card {card_idx}: cost={cost}, elixir={state.elixir_count}, affordable={can_afford}")
+                self.logger.log(f"  - Card {card_idx}: cost={cost}, normalized_cost={normalized_cost}, elixir={state.elixir_count}, affordable={can_afford}")
             if can_afford:
                 affordable_cards.append(card_idx)
         
@@ -318,7 +321,7 @@ class DQNAgent:
             elif affordable_cards:
                 card_index = random.choice(affordable_cards)
                 position = (random.random(), random.random())
-                elixir_cost = card_elixir_costs[available_cards.index(card_index)]
+                elixir_cost = card_elixir_costs[available_cards.index(card_index)] / 10.0  # Normalize to match elixir
                 if self.logger:
                     self.logger.log(f"Random action: PLAY_CARD {card_index} at {position}")
                     self.logger.log(f"  - Card index: {card_index}")
@@ -438,7 +441,7 @@ class DQNAgent:
                             card_index=card_index,
                             position=(pos_x, pos_y),
                             timestamp=time.time(),
-                            elixir_cost=card_elixir_costs[available_cards.index(card_index)]
+                            elixir_cost=card_elixir_costs[available_cards.index(card_index)] / 10.0  # Normalize to match elixir
                         )
                     else:
                         # Fallback to wait if card not affordable
