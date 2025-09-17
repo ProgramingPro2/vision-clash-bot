@@ -564,7 +564,10 @@ class MovementBasedBot:
     
     def send_emote(self):
         """Send a random emote (like the original bot)."""
+        self.logger.log(f"send_emote called: enable_emotes={self.config.enable_emotes}, emulator={self.emulator is not None}")
+        
         if not self.config.enable_emotes or not self.emulator:
+            self.logger.log("Emote skipped: not enabled or no emulator")
             return
         
         try:
@@ -589,7 +592,11 @@ class MovementBasedBot:
     
     def is_emote_cooldown_active(self) -> bool:
         """Check if emote cooldown is currently active."""
-        return time.time() < self.emote_cooldown_end
+        current_time = time.time()
+        is_active = current_time < self.emote_cooldown_end
+        if self.frame_count % 30 == 0:  # Log every 30 frames to avoid spam
+            self.logger.log(f"Emote cooldown check: current={current_time:.2f}, end={self.emote_cooldown_end:.2f}, active={is_active}")
+        return is_active
     
     def _get_card_elixir_costs(self, available_cards: List[int]) -> List[float]:
         """
@@ -952,7 +959,11 @@ class MovementBasedBot:
                 # Send emote with configured chance (like original bot)
                 if self.config.enable_emotes:
                     import random
-                    if random.random() < self.config.emote_chance:
+                    emote_roll = random.random()
+                    if self.frame_count % 5 == 0:
+                        self.logger.log(f"Emote check: roll={emote_roll:.3f}, chance={self.config.emote_chance}")
+                    if emote_roll < self.config.emote_chance:
+                        self.logger.log("Emote triggered!")
                         self.send_emote()
                 
             except Exception as e:
