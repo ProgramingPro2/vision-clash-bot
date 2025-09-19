@@ -48,13 +48,25 @@ class TrackedUnit:
         self.movement_history.append(blob.centroid)
     
     def predict_next_position(self) -> Tuple[int, int]:
-        """Predict next position based on speed vector."""
+        """Predict next position based on speed vector with acceleration."""
         if len(self.movement_history) < 2:
             return self.centroid
         
-        # Simple linear prediction
-        predicted_x = int(self.centroid[0] + self.speed_vector[0])
-        predicted_y = int(self.centroid[1] + self.speed_vector[1])
+        # Calculate acceleration if we have enough history
+        acceleration = (0.0, 0.0)
+        if len(self.movement_history) >= 3:
+            prev_speed = (
+                self.movement_history[-1][0] - self.movement_history[-2][0],
+                self.movement_history[-1][1] - self.movement_history[-2][1]
+            )
+            acceleration = (
+                self.speed_vector[0] - prev_speed[0],
+                self.speed_vector[1] - prev_speed[1]
+            )
+        
+        # Predict with acceleration: position = current + velocity + 0.5 * acceleration
+        predicted_x = int(self.centroid[0] + self.speed_vector[0] + 0.5 * acceleration[0])
+        predicted_y = int(self.centroid[1] + self.speed_vector[1] + 0.5 * acceleration[1])
         
         return (predicted_x, predicted_y)
     
@@ -104,9 +116,34 @@ class UnitTracker:
         """Calculate Euclidean distance between two positions."""
         return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
     
+    def calculate_matching_score(self, track: TrackedUnit, blob: UnitBlob) -> float:
+        """Calculate matching score between track and blob considering multiple factors."""
+        # Distance score (lower is better)
+        predicted_pos = track.predict_next_position()
+        distance = self.calculate_distance(predicted_pos, blob.centroid)
+        distance_score = max(0, 1.0 - (distance / self.max_distance))
+        
+        # Size similarity score
+        size_ratio = min(track.area, blob.area) / max(track.area, blob.area)
+        size_score = size_ratio
+        
+        # Speed consistency score
+        if track.speed_vector != (0.0, 0.0):
+            # Calculate expected position based on speed
+            expected_x = track.centroid[0] + track.speed_vector[0]
+            expected_y = track.centroid[1] + track.speed_vector[1]
+            expected_distance = self.calculate_distance((expected_x, expected_y), blob.centroid)
+            speed_score = max(0, 1.0 - (expected_distance / self.max_distance))
+        else:
+            speed_score = 0.5  # Neutral score for stationary tracks
+        
+        # Combined score (weighted average)
+        total_score = (distance_score * 0.5 + size_score * 0.3 + speed_score * 0.2)
+        return total_score
+    
     def match_blobs_to_tracks(self, blobs: List[UnitBlob]) -> Tuple[Dict[int, UnitBlob], List[UnitBlob]]:
         """
-        Match detected blobs to existing tracks using distance-based assignment.
+        Match detected blobs to existing tracks using improved scoring system.
         
         Args:
             blobs: List of detected blobs
@@ -117,32 +154,29 @@ class UnitTracker:
         matched_tracks = {}
         unmatched_blobs = blobs.copy()
         
-        # Create distance matrix
         if not self.tracked_units or not blobs:
             return matched_tracks, unmatched_blobs
         
-        # Calculate distances between all tracks and blobs
-        distances = []
+        # Calculate matching scores between all tracks and blobs
+        scores = []
         for track_id, track in self.tracked_units.items():
             if track.is_lost():
                 continue
                 
-            predicted_pos = track.predict_next_position()
             for i, blob in enumerate(blobs):
-                distance = self.calculate_distance(predicted_pos, blob.centroid)
-                distances.append((distance, track_id, i))
+                score = self.calculate_matching_score(track, blob)
+                # Only consider matches above threshold
+                if score > 0.3:  # Minimum matching threshold
+                    scores.append((score, track_id, i))
         
-        # Sort by distance
-        distances.sort(key=lambda x: x[0])
+        # Sort by score (higher is better)
+        scores.sort(key=lambda x: x[0], reverse=True)
         
         # Assign matches greedily
         used_tracks = set()
         used_blobs = set()
         
-        for distance, track_id, blob_idx in distances:
-            if distance > self.max_distance:
-                break
-                
+        for score, track_id, blob_idx in scores:
             if track_id not in used_tracks and blob_idx not in used_blobs:
                 matched_tracks[track_id] = blobs[blob_idx]
                 used_tracks.add(track_id)

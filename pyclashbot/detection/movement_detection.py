@@ -67,6 +67,15 @@ class MovementDetector:
         self.bridge_mask = None
         self.bridge_mask_created = False
         
+        # Adaptive thresholding
+        self.adaptive_threshold = True
+        self.threshold_history = deque(maxlen=10)
+        self.noise_level = 0
+        
+        # Performance tracking
+        self.detection_count = 0
+        self.avg_detection_time = 0
+        
     def preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
         """Preprocess frame for movement detection."""
         # Convert to grayscale
@@ -135,9 +144,26 @@ class MovementDetector:
         
         return mask
     
+    def calculate_adaptive_threshold(self, diff: np.ndarray) -> int:
+        """Calculate adaptive threshold based on noise level."""
+        if not self.adaptive_threshold:
+            return self.threshold
+        
+        # Calculate noise level from difference image
+        noise_level = np.mean(diff)
+        self.threshold_history.append(noise_level)
+        
+        if len(self.threshold_history) >= 5:
+            avg_noise = np.mean(list(self.threshold_history))
+            # Adaptive threshold: base threshold + 2 * noise level
+            adaptive_thresh = max(self.threshold, int(avg_noise * 2.5))
+            return min(adaptive_thresh, 100)  # Cap at 100
+        
+        return self.threshold
+    
     def detect_movement_negative_diff(self, frame: np.ndarray) -> np.ndarray:
         """
-        Detect movement using negative greyscale frame differencing.
+        Detect movement using negative greyscale frame differencing with adaptive thresholding.
         
         Args:
             frame: Current frame (grayscale)
@@ -156,8 +182,9 @@ class MovementDetector:
         # Calculate difference between current and previous frame
         diff = cv2.absdiff(self.frame_history[-1], self.frame_history[-2])
         
-        # Apply threshold
-        _, thresh = cv2.threshold(diff, self.threshold, 255, cv2.THRESH_BINARY)
+        # Apply adaptive threshold
+        adaptive_thresh = self.calculate_adaptive_threshold(diff)
+        _, thresh = cv2.threshold(diff, adaptive_thresh, 255, cv2.THRESH_BINARY)
         
         # Apply bridge mask to ignore scenery movement
         if not self.bridge_mask_created:
@@ -170,6 +197,9 @@ class MovementDetector:
         # Apply morphological operations to clean up
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, self.kernel)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, self.kernel)
+        
+        # Additional noise reduction
+        thresh = cv2.medianBlur(thresh, 3)
         
         return thresh
     

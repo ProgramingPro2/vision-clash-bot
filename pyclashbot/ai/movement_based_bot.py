@@ -292,50 +292,87 @@ class MovementBasedBot:
         self._initialize_components()
     
     def _initialize_components(self):
-        """Initialize all bot components."""
+        """Initialize all bot components with robust error handling."""
+        components_initialized = 0
+        total_components = 4
+        
         try:
             # Movement detector
             if self.config.movement_detection_enabled:
-                self.movement_detector = MovementDetector(
-                    min_area=self.config.movement_detection_config.min_area,
-                    max_area=self.config.movement_detection_config.max_area,
-                    threshold=self.config.movement_detection_config.threshold,
-                    history_length=self.config.movement_detection_config.history_length
-                )
-                self.logger.log("Movement detector initialized")
+                try:
+                    self.movement_detector = MovementDetector(
+                        min_area=self.config.movement_detection_config.min_area,
+                        max_area=self.config.movement_detection_config.max_area,
+                        threshold=self.config.movement_detection_config.threshold,
+                        history_length=self.config.movement_detection_config.history_length
+                    )
+                    self.logger.log("Movement detector initialized successfully")
+                    components_initialized += 1
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize movement detector: {e}")
+                    self.movement_detector = None
             else:
                 self.logger.log("Movement detection disabled")
             
             # Unit tracker
             if self.config.unit_tracking_enabled:
-                self.unit_tracker = UnitTracker(
-                    max_distance=self.config.unit_tracking_config.max_distance,
-                    max_occlusion_frames=self.config.unit_tracking_config.max_occlusion_frames,
-                    min_track_length=self.config.unit_tracking_config.min_track_length
-                )
-                self.logger.log("Unit tracker initialized")
+                try:
+                    self.unit_tracker = UnitTracker(
+                        max_distance=self.config.unit_tracking_config.max_distance,
+                        max_occlusion_frames=self.config.unit_tracking_config.max_occlusion_frames,
+                        min_track_length=self.config.unit_tracking_config.min_track_length
+                    )
+                    self.logger.log("Unit tracker initialized successfully")
+                    components_initialized += 1
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize unit tracker: {e}")
+                    self.unit_tracker = None
+            else:
+                self.logger.log("Unit tracking disabled")
             
             # Tower health detector
             if self.config.tower_health_enabled:
-                self.tower_health_detector = TowerHealthDetector()
-                self.logger.log("Tower health detector initialized")
+                try:
+                    self.tower_health_detector = TowerHealthDetector()
+                    self.logger.log("Tower health detector initialized successfully")
+                    components_initialized += 1
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize tower health detector: {e}")
+                    self.tower_health_detector = None
+            else:
+                self.logger.log("Tower health detection disabled")
             
             # DQN agent
             if self.config.dqn_enabled:
-                self.state_processor = GameStateProcessor()
-                self.dqn_agent = DQNAgent(
-                    state_size=self.config.dqn_state_size,
-                    action_size=self.config.dqn_action_size,
-                    logger=self.logger
-                )
-                
-                # Auto-load best available model
-                self.auto_load_model()
+                try:
+                    self.state_processor = GameStateProcessor()
+                    self.dqn_agent = DQNAgent(
+                        state_size=self.config.dqn_state_size,
+                        action_size=self.config.dqn_action_size,
+                        logger=self.logger
+                    )
+                    
+                    # Auto-load best available model
+                    self.auto_load_model()
+                    self.logger.log("DQN agent initialized successfully")
+                    components_initialized += 1
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize DQN agent: {e}")
+                    self.dqn_agent = None
+                    self.state_processor = None
+            else:
+                self.logger.log("DQN agent disabled")
             
-            self.logger.log("All components initialized successfully")
+            # Report initialization status
+            if components_initialized == total_components:
+                self.logger.log("All components initialized successfully")
+            elif components_initialized > 0:
+                self.logger.log(f"Partial initialization: {components_initialized}/{total_components} components ready")
+            else:
+                self.logger.error("No components initialized - bot will have limited functionality")
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize components: {e}")
+            self.logger.error(f"Critical error during component initialization: {e}")
             # Don't raise - allow bot to continue with limited functionality
             self.logger.log("Continuing with limited functionality")
     
@@ -661,16 +698,8 @@ class MovementBasedBot:
         start_time = time.time()
         self.frame_count += 1
         
-        if self.frame_count % 5 == 0:  # Log every 5 frames for detailed debugging
-            self.logger.log("=" * 100)
-            self.logger.log(f"MOVEMENT BOT FRAME PROCESSING #{self.frame_count}")
-            self.logger.log("=" * 100)
-            self.logger.log(f"Frame details:")
-            self.logger.log(f"  - Shape: {frame.shape}")
-            self.logger.log(f"  - Dtype: {frame.dtype}")
-            self.logger.log(f"  - Min/Max values: {frame.min()}/{frame.max()}")
-            self.logger.log(f"  - Memory usage: {frame.nbytes} bytes")
-            self.logger.log(f"  - Processing start time: {start_time:.6f}")
+        if self.frame_count % 30 == 0:  # Log every 30 frames for performance
+            self.logger.log(f"Frame #{self.frame_count} - Processing time: {time.time() - start_time:.3f}s")
         
         results = {
             'frame_count': self.frame_count,
@@ -686,96 +715,37 @@ class MovementBasedBot:
         try:
             # Movement detection
             detected_blobs = []
-            if self.frame_count % 5 == 0:
-                self.logger.log("STEP 1: MOVEMENT DETECTION")
             
             if self.movement_detector:
-                if self.frame_count % 5 == 0:
-                    self.logger.log("  - Movement detector available, detecting units...")
-                
                 # Skip movement detection during emote cooldown to avoid conflicts
                 if self.is_emote_cooldown_active():
-                    if self.frame_count % 5 == 0:
-                        self.logger.log("  - Skipping movement detection - emote cooldown active")
                     detected_blobs = []
-                    detection_time = 0.0
                 else:
-                    detection_start = time.time()
                     detected_blobs = self.movement_detector.detect_units(frame)
-                    detection_time = time.time() - detection_start
                 
                 results['detected_units'] = detected_blobs
-                
-                if self.frame_count % 5 == 0:
-                    if detection_time > 0:
-                        self.logger.log(f"  - Detection completed in {detection_time:.6f}s")
-                    self.logger.log(f"  - Detected {len(detected_blobs)} units")
-                    for i, blob in enumerate(detected_blobs):
-                        self.logger.log(f"    Unit {i}: area={blob.area}, centroid={blob.centroid}")
-            else:
-                if self.frame_count % 5 == 0:
-                    self.logger.log("  - Movement detector NOT available")
             
             # Unit tracking
             tracked_units = []
-            if self.frame_count % 5 == 0:
-                self.logger.log("STEP 2: UNIT TRACKING")
             
             if self.unit_tracker and detected_blobs:
-                if self.frame_count % 5 == 0:
-                    self.logger.log(f"  - Unit tracker available, tracking {len(detected_blobs)} blobs...")
-                tracking_start = time.time()
                 tracked_units = self.unit_tracker.track_units(detected_blobs)
-                tracking_time = time.time() - tracking_start
                 results['tracked_units'] = tracked_units
-                
-                if self.frame_count % 5 == 0:
-                    self.logger.log(f"  - Tracking completed in {tracking_time:.6f}s")
-                    self.logger.log(f"  - Tracked {len(tracked_units)} units")
-                    for i, unit in enumerate(tracked_units):
-                        self.logger.log(f"    Track {i}: ID={unit.unit_id}, centroid={unit.centroid}, speed={unit.speed_vector}")
-            else:
-                if self.frame_count % 5 == 0:
-                    missing = []
-                    if not self.unit_tracker: missing.append("unit_tracker")
-                    if not detected_blobs: missing.append("detected_blobs")
-                    self.logger.log(f"  - Unit tracking skipped, missing: {missing}")
             
-            # Tower health detection
+            # Tower health detection (every 10 frames for performance)
             tower_health = None
-            if self.frame_count % 5 == 0:
-                self.logger.log("STEP 3: TOWER HEALTH DETECTION")
-            
-            if self.tower_health_detector:
-                if self.frame_count % 5 == 0:
-                    self.logger.log("  - Tower health detector available, detecting health...")
-                health_start = time.time()
+            if self.tower_health_detector and self.frame_count % 10 == 0:
                 tower_health = self.tower_health_detector.detect_all_tower_health(frame)
-                health_time = time.time() - health_start
                 results['tower_health'] = tower_health
-                
-                if self.frame_count % 5 == 0:
-                    self.logger.log(f"  - Health detection completed in {health_time:.6f}s")
-                    if tower_health:
-                        self.logger.log(f"  - Tower health: left={tower_health.left_tower_health}, right={tower_health.right_tower_health}")
-                        self.logger.log(f"  - Enemy health: left={tower_health.enemy_left_tower_health}, right={tower_health.enemy_right_tower_health}")
-                    else:
-                        self.logger.log("  - No tower health detected")
-            else:
-                if self.frame_count % 5 == 0:
-                    self.logger.log("  - Tower health detector NOT available")
             
             # Game state processing
             game_state = None
-            if self.dqn_agent and tracked_units and tower_health:
-                # Use emulator-based detection (like original bot) instead of frame-based
-                elixir_count = self._detect_elixir_from_emulator()
+            if self.dqn_agent and tracked_units:
+                # Use cached elixir count for performance (update every 5 frames)
+                if not hasattr(self, '_cached_elixir') or self.frame_count % 5 == 0:
+                    self._cached_elixir = self._detect_elixir_from_emulator()
                 
-                if self.frame_count % 5 == 0:
-                    self.logger.log("STEP 4: GAME STATE CREATION")
-                    self.logger.log(f"  - Tracked units: {len(tracked_units)}")
-                    self.logger.log(f"  - Detected elixir: {elixir_count}")
-                    self.logger.log(f"  - Tower health available: {tower_health is not None}")
+                elixir_count = self._cached_elixir
                 
                 # Get time remaining (placeholder)
                 time_remaining = 120.0  # Placeholder
@@ -783,33 +753,25 @@ class MovementBasedBot:
                 # Get card availability (placeholder)
                 card_availability = [True, True, True, True]  # Placeholder
                 
-                if self.frame_count % 30 == 0:
-                    self.logger.log(f"Creating game state: elixir={elixir_count:.1f}, units={len(tracked_units)}, time={time_remaining}")
+                # Use cached tower health or default values
+                tower_health_values = [100, 100, 100, 100]  # Default values
+                if tower_health:
+                    tower_health_values = [
+                        tower_health.left_tower_health or 100,
+                        tower_health.right_tower_health or 100,
+                        tower_health.enemy_left_tower_health or 100,
+                        tower_health.enemy_right_tower_health or 100
+                    ]
                 
                 # Process game state
                 game_state = self.state_processor.process_game_state(
                     tracked_units=tracked_units,
                     elixir_count=elixir_count,
-                    tower_health=[
-                        tower_health.left_tower_health or 100,
-                        tower_health.right_tower_health or 100,
-                        tower_health.enemy_left_tower_health or 100,
-                        tower_health.enemy_right_tower_health or 100
-                    ],
+                    tower_health=tower_health_values,
                     time_remaining=time_remaining,
                     card_availability=card_availability
                 )
                 results['game_state'] = game_state
-                
-                if self.frame_count % 30 == 0:
-                    self.logger.log(f"Game state created: {game_state}")
-            else:
-                if self.frame_count % 30 == 0:
-                    missing = []
-                    if not self.dqn_agent: missing.append("dqn_agent")
-                    if not tracked_units: missing.append("tracked_units")
-                    if not tower_health: missing.append("tower_health")
-                    self.logger.log(f"Cannot create game state, missing: {missing}")
             
             # DQN decision making
             action = None
@@ -848,29 +810,13 @@ class MovementBasedBot:
                 if self.config.save_training_data:
                     self._store_training_data(game_state, action)
             else:
-                # Fallback: Simple random action if DQN not available
+                # Fallback: Intelligent action system if DQN not available
                 if self.emulator and self.frame_count % 60 == 0:  # Every 2 seconds at 30fps
                     try:
-                        if self.frame_count % 60 == 0:
-                            self.logger.log("Using fallback action system")
-                        available_cards = check_which_cards_are_available(self.emulator)
-                        if available_cards:
-                            import random
-                            from .dqn_agent import GameAction
-                            card_index = random.choice(available_cards)
-                            position = (random.uniform(0.2, 0.8), random.uniform(0.3, 0.7))
-                            action = GameAction(
-                                action_type="play_card",
-                                card_index=card_index,
-                                position=position,
-                                timestamp=time.time(),
-                                elixir_cost=3.0
-                            )
+                        action = self._get_fallback_action()
+                        if action:
                             results['action'] = action
-                            self.logger.log(f"Fallback action: Playing card {card_index} at {position}")
-                        else:
-                            if self.frame_count % 60 == 0:
-                                self.logger.log("Fallback: No available cards")
+                            self.logger.log(f"Fallback action: {action.action_type} - {action.card_index} at {action.position}")
                     except Exception as e:
                         self.logger.error(f"Fallback action failed: {e}")
                 else:
@@ -905,6 +851,71 @@ class MovementBasedBot:
             self.processing_times = self.processing_times[-100:]
         
         return results
+    
+    def _get_fallback_action(self):
+        """Get intelligent fallback action when DQN is not available."""
+        try:
+            from .dqn_agent import GameAction
+            
+            # Get available cards
+            available_cards = check_which_cards_are_available(self.emulator)
+            if not available_cards:
+                return GameAction(action_type="wait", timestamp=time.time(), elixir_cost=0.0)
+            
+            # Get elixir count
+            elixir_count = self._detect_elixir_from_emulator()
+            
+            # Simple strategy: wait if low elixir, play if sufficient elixir
+            if elixir_count < 3.0:
+                return GameAction(action_type="wait", timestamp=time.time(), elixir_cost=0.0)
+            
+            # Choose card based on simple heuristics
+            import random
+            
+            # Prefer cheaper cards when elixir is low
+            if elixir_count < 5.0:
+                # Try to find cheap cards (1-3 elixir)
+                cheap_cards = []
+                for card_idx in available_cards:
+                    try:
+                        card_identity = identify_hand_cards(self.emulator, card_idx)
+                        cost = INDIVIDUAL_CARD_COSTS.get(card_identity, 4.0)
+                        if cost <= 3.0:
+                            cheap_cards.append(card_idx)
+                    except:
+                        continue
+                
+                if cheap_cards:
+                    card_index = random.choice(cheap_cards)
+                else:
+                    card_index = random.choice(available_cards)
+            else:
+                # Choose any available card
+                card_index = random.choice(available_cards)
+            
+            # Choose position based on simple strategy
+            # Defensive positioning (back of field) for most cards
+            position = (random.uniform(0.3, 0.7), random.uniform(0.6, 0.8))
+            
+            # Get card cost
+            try:
+                card_identity = identify_hand_cards(self.emulator, card_index)
+                elixir_cost = INDIVIDUAL_CARD_COSTS.get(card_identity, 4.0)
+            except:
+                elixir_cost = 3.0
+            
+            return GameAction(
+                action_type="play_card",
+                card_index=card_index,
+                position=position,
+                timestamp=time.time(),
+                elixir_cost=elixir_cost
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error in fallback action generation: {e}")
+            # Ultimate fallback: wait
+            return GameAction(action_type="wait", timestamp=time.time(), elixir_cost=0.0)
     
     def execute_action(self, action: GameAction) -> GameAction:
         """
@@ -1035,19 +1046,35 @@ class MovementBasedBot:
                 self._train_dqn()
     
     def _calculate_reward(self, current_state: GameState, previous_state: GameState, action: GameAction = None) -> GameReward:
-        """Calculate reward based on state changes and action success."""
+        """Calculate comprehensive reward based on state changes and strategic factors."""
         # Base reward calculation
         immediate_reward = 0.0
         
-        # Simple reward based on tower health changes
+        # Enhanced tower health reward with critical health bonuses
         if current_state.tower_health and previous_state.tower_health:
             for i in range(len(current_state.tower_health)):
                 if i < len(previous_state.tower_health):
                     health_change = previous_state.tower_health[i] - current_state.tower_health[i]
                     if i < 2:  # Own towers
-                        immediate_reward -= health_change * 0.1  # Penalty for losing health
+                        # Penalty for losing health, higher penalty for critical health
+                        penalty_multiplier = 2.0 if current_state.tower_health[i] < 0.3 else 1.0
+                        immediate_reward -= health_change * 0.15 * penalty_multiplier
                     else:  # Enemy towers
-                        immediate_reward += health_change * 0.1  # Reward for dealing damage
+                        # Reward for dealing damage, bonus for critical damage
+                        reward_multiplier = 2.0 if current_state.tower_health[i] < 0.3 else 1.0
+                        immediate_reward += health_change * 0.15 * reward_multiplier
+        
+        # Elixir advantage reward
+        elixir_advantage = current_state.elixir_count - previous_state.elixir_count
+        if elixir_advantage > 0:
+            immediate_reward += elixir_advantage * 0.05  # Small reward for elixir advantage
+        
+        # Unit count advantage reward
+        current_units = len(current_state.unit_positions)
+        previous_units = len(previous_state.unit_positions)
+        unit_advantage = current_units - previous_units
+        if unit_advantage > 0:
+            immediate_reward += unit_advantage * 0.02  # Small reward for unit advantage
         
         # Calculate all reward components
         placement_reward = 0.0
@@ -1056,19 +1083,17 @@ class MovementBasedBot:
         wait_reward = 0.0
         
         if action and self.dqn_agent:
-            # Calculate placement reward
-            placement_reward = self.dqn_agent.calculate_placement_reward(action)
+            # Calculate placement reward with position quality
+            placement_reward = self._calculate_enhanced_placement_reward(action, current_state)
             
             # Calculate detection reward
             detection_reward = self.dqn_agent.calculate_detection_reward(action)
             
             # Calculate elixir efficiency reward
-            elixir_efficiency_reward = self.dqn_agent.calculate_elixir_efficiency_reward(
-                action, previous_state.elixir_count
-            )
+            elixir_efficiency_reward = self._calculate_enhanced_elixir_reward(action, previous_state, current_state)
             
             # Calculate wait reward
-            wait_reward = self.dqn_agent.calculate_wait_reward(action, previous_state)
+            wait_reward = self._calculate_enhanced_wait_reward(action, previous_state, current_state)
         
         return GameReward(
             immediate_reward=immediate_reward,
@@ -1078,6 +1103,67 @@ class MovementBasedBot:
             wait_reward=wait_reward,
             timestamp=time.time()
         )
+    
+    def _calculate_enhanced_placement_reward(self, action: GameAction, current_state: GameState) -> float:
+        """Calculate enhanced placement reward based on strategic positioning."""
+        if not action.placement_success:
+            return -0.1  # Penalty for failed placement
+        
+        base_reward = 0.1
+        
+        # Position quality bonus
+        if action.position:
+            x, y = action.position
+            
+            # Reward defensive positioning (back of field)
+            if y > 0.6:  # Back half of field
+                base_reward += 0.05
+            
+            # Reward center positioning for better coverage
+            if 0.3 < x < 0.7:  # Center of field
+                base_reward += 0.03
+            
+            # Penalty for edge positioning (unless strategic)
+            if x < 0.1 or x > 0.9:
+                base_reward -= 0.02
+        
+        return base_reward
+    
+    def _calculate_enhanced_elixir_reward(self, action: GameAction, previous_state: GameState, current_state: GameState) -> float:
+        """Calculate enhanced elixir efficiency reward."""
+        if action.action_type == "wait":
+            # Reward waiting when elixir is low or when building advantage
+            if previous_state.elixir_count < 3.0:
+                return 0.08  # Higher reward for waiting when low on elixir
+            elif previous_state.elixir_count < 5.0:
+                return 0.04  # Moderate reward for waiting
+            else:
+                return 0.01  # Small reward for waiting with high elixir
+        else:  # play_card
+            # Reward efficient elixir usage
+            elixir_remaining = previous_state.elixir_count - action.elixir_cost
+            
+            if elixir_remaining >= 3.0:  # Good elixir management
+                return 0.06
+            elif elixir_remaining >= 1.0:  # Acceptable elixir management
+                return 0.03
+            else:  # Poor elixir management
+                return -0.02
+    
+    def _calculate_enhanced_wait_reward(self, action: GameAction, previous_state: GameState, current_state: GameState) -> float:
+        """Calculate enhanced wait reward based on game situation."""
+        if action.action_type != "wait":
+            return 0.0
+        
+        # Reward waiting in appropriate situations
+        if previous_state.elixir_count < 4.0:  # Low elixir
+            return 0.05
+        elif any(h < 0.3 for h in previous_state.tower_health[:2]):  # Critical health
+            return 0.02  # Smaller reward for waiting when in danger
+        elif len(previous_state.unit_positions) == 0:  # No units on field
+            return 0.03  # Reward waiting when field is empty
+        else:
+            return 0.01  # Small reward for strategic waiting
     
     def _train_dqn(self):
         """Train the DQN agent."""

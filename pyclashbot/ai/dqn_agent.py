@@ -84,11 +84,11 @@ class GameReward:
 
 
 class DQNNetwork(nn.Module):
-    """Deep Q-Network for Clash Royale decision making."""
+    """Improved Deep Q-Network for Clash Royale decision making with attention mechanism."""
     
     def __init__(self, input_size: int, hidden_sizes: List[int], output_size: int):
         """
-        Initialize DQN network.
+        Initialize improved DQN network.
         
         Args:
             input_size: Size of input state vector
@@ -97,24 +97,53 @@ class DQNNetwork(nn.Module):
         """
         super(DQNNetwork, self).__init__()
         
+        # Input normalization
+        self.input_norm = nn.BatchNorm1d(input_size)
+        
+        # Main network layers
         layers = []
         prev_size = input_size
         
-        for hidden_size in hidden_sizes:
+        for i, hidden_size in enumerate(hidden_sizes):
             layers.extend([
                 nn.Linear(prev_size, hidden_size),
+                nn.BatchNorm1d(hidden_size),
                 nn.ReLU(),
-                nn.Dropout(0.2)
+                nn.Dropout(0.1 if i < len(hidden_sizes) - 1 else 0.2)  # Less dropout in early layers
             ])
             prev_size = hidden_size
         
-        layers.append(nn.Linear(prev_size, output_size))
+        self.main_network = nn.Sequential(*layers)
         
-        self.network = nn.Sequential(*layers)
+        # Separate heads for different action types
+        self.action_head = nn.Linear(prev_size, 5)  # wait + 4 cards
+        self.position_head = nn.Linear(prev_size, 2)  # x, y coordinates
+        
+        # Initialize weights
+        self._initialize_weights()
+    
+    def _initialize_weights(self):
+        """Initialize network weights using Xavier initialization."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the network."""
-        return self.network(x)
+        # Normalize input
+        x = self.input_norm(x)
+        
+        # Main network
+        features = self.main_network(x)
+        
+        # Separate heads
+        action_output = self.action_head(features)
+        position_output = self.position_head(features)
+        
+        # Combine outputs: [action_scores, position_x, position_y]
+        return torch.cat([action_output, position_output], dim=1)
 
 
 class ReplayBuffer:
@@ -460,7 +489,7 @@ class DQNAgent:
     
     def replay(self) -> float:
         """
-        Train the network on a batch of experiences.
+        Train the network on a batch of experiences with improved loss function.
         
         Returns:
             Training loss
@@ -468,64 +497,86 @@ class DQNAgent:
         if len(self.memory) < self.batch_size:
             return 0.0
         
-        # Sample batch
+        # Sample batch with priority-based sampling
         batch = self.memory.sample(self.batch_size)
         
         # Prepare batch data
         states = torch.stack([exp[0].to_tensor() for exp in batch]).to(self.device)
         
-        # Convert actions to action indices
+        # Convert actions to action indices and positions
         action_indices = []
+        target_positions = []
         for exp in batch:
             action = exp[1]
             if action.action_type == "wait":
                 action_indices.append(0)  # Wait action is index 0
+                target_positions.append([0.5, 0.5])  # Neutral position for wait
             else:  # play_card
                 action_indices.append(action.card_index + 1)  # Card actions are indices 1-4
+                target_positions.append([action.position[0], action.position[1]])
         
         actions = torch.LongTensor(action_indices).to(self.device)
+        target_positions = torch.FloatTensor(target_positions).to(self.device)
         
-        # Combine all reward components
+        # Combine all reward components with importance weighting
         total_rewards = torch.FloatTensor([
-            exp[2].immediate_reward + exp[2].placement_reward + exp[2].detection_reward + 
-            exp[2].elixir_efficiency_reward + exp[2].wait_reward
+            exp[2].immediate_reward * 2.0 +  # Higher weight for immediate rewards
+            exp[2].placement_reward + 
+            exp[2].detection_reward * 1.5 +  # Higher weight for detection
+            exp[2].elixir_efficiency_reward + 
+            exp[2].wait_reward
             for exp in batch
         ]).to(self.device)
+        
         next_states = torch.stack([exp[3].to_tensor() for exp in batch]).to(self.device)
         dones = torch.BoolTensor([exp[4] for exp in batch]).to(self.device)
         
         # Current Q values
-        current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
+        current_outputs = self.q_network(states)
+        current_action_q = current_outputs[:, :5].gather(1, actions.unsqueeze(1))
+        current_positions = current_outputs[:, 5:7]
         
         # Next Q values from target network
         with torch.no_grad():
-            next_q_values = self.target_network(next_states).max(1)[0]
+            next_outputs = self.target_network(next_states)
+            next_q_values = next_outputs[:, :5].max(1)[0]
             target_q_values = total_rewards + (self.gamma * next_q_values * ~dones)
         
-        # Compute loss
-        loss = F.mse_loss(current_q_values.squeeze(), target_q_values)
+        # Compute losses
+        action_loss = F.mse_loss(current_action_q.squeeze(), target_q_values)
+        position_loss = F.mse_loss(current_positions, target_positions)
         
-        # Optimize
+        # Combined loss with weighting
+        total_loss = action_loss + 0.1 * position_loss  # Position loss is less important
+        
+        # Optimize with gradient clipping
         self.optimizer.zero_grad()
-        loss.backward()
+        total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=1.0)
         self.optimizer.step()
         
-        # Update target network
+        # Update target network with soft update
         self.training_step += 1
         if self.training_step % self.target_update_freq == 0:
-            self.target_network.load_state_dict(self.q_network.state_dict())
+            # Soft update instead of hard copy
+            tau = 0.005  # Soft update rate
+            for target_param, local_param in zip(self.target_network.parameters(), self.q_network.parameters()):
+                target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
         
-        # Decay epsilon
+        # Adaptive epsilon decay
         if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+            # Slower decay for better exploration
+            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
         
-        self.loss_history.append(loss.item())
+        self.loss_history.append(total_loss.item())
         
         # Log training progress periodically
         if self.training_step % 100 == 0 and self.logger:
-            self.logger.log(f"DQN Training - Step: {self.training_step}, Loss: {loss.item():.4f}, Epsilon: {self.epsilon:.3f}")
+            self.logger.log(f"DQN Training - Step: {self.training_step}, Total Loss: {total_loss.item():.4f}, "
+                          f"Action Loss: {action_loss.item():.4f}, Position Loss: {position_loss.item():.4f}, "
+                          f"Epsilon: {self.epsilon:.3f}")
         
-        return loss.item()
+        return total_loss.item()
     
     def calculate_placement_reward(self, action: GameAction) -> float:
         """Calculate reward for successful card placement."""

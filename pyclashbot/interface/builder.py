@@ -206,5 +206,34 @@ def build_collection_stats() -> sg.Frame:
 
 
 def build_bot_stats() -> sg.Frame:
-    """Build the bot stats section."""
-    return build_stats_section(BOT_STATS, "Bot Stats")
+    """Build the bot stats section with movement bot controls."""
+    # Create the main stats section
+    stats_frame = build_stats_section(BOT_STATS, "Bot Stats")
+    
+    # Create movement bot controls section
+    movement_controls = [
+        [sg.Text("AI Movement Bot Controls", font=("Arial", 10, "bold"))],
+        [sg.HSeparator()],
+        
+        # Toggle buttons
+        [sg.Button("Toggle Bot Vision", key="-TOGGLE_BOT_VISION-", size=(15, 1)),
+         sg.Button("Toggle Emotes", key="-TOGGLE_EMOTES-", size=(15, 1))],
+        
+        # Model management buttons
+        [sg.Button("Delete Model", key="-DELETE_MODEL-", size=(15, 1), button_color=("white", "red")),
+         sg.Button("Reset Model", key="-RESET_MODEL-", size=(15, 1))],
+        
+        [sg.Button("Load Model", key="-LOAD_MODEL-", size=(15, 1)),
+         sg.Button("Save Model", key="-SAVE_MODEL-", size=(15, 1))],
+        
+        # Status display
+        [sg.Text("Bot Status:"), sg.Text("Ready", key="-BOT_STATUS-", size=(20, 1))],
+    ]
+    
+    # Combine stats and controls
+    layout = [
+        [stats_frame],
+        [sg.Frame("Movement Bot", movement_controls, expand_x=True, pad=(5, 5))]
+    ]
+    
+    return sg.Frame("Bot Stats & Controls", layout, expand_x=True, expand_y=True)
