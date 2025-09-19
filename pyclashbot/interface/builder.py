@@ -215,9 +215,9 @@ def build_bot_stats() -> sg.Frame:
         [sg.Text("AI Movement Bot Controls", font=("Arial", 10, "bold"))],
         [sg.HSeparator()],
         
-        # Toggle buttons
+        # Toggle buttons and checkboxes
         [sg.Button("Toggle Bot Vision", key="-TOGGLE_BOT_VISION-", size=(15, 1)),
-         sg.Button("Toggle Emotes", key="-TOGGLE_EMOTES-", size=(15, 1))],
+         sg.Checkbox("Enable Emotes", key="-EMOTES_CHECKBOX-", default=True, size=(15, 1))],
         
         # Model management buttons
         [sg.Button("Delete Model", key="-DELETE_MODEL-", size=(15, 1), button_color=("white", "red")),

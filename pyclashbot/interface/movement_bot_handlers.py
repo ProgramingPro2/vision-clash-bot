@@ -17,6 +17,22 @@ class MovementBotHandlers:
         """Set the bot instance for handlers."""
         self.bot = bot_instance
     
+    def sync_checkbox_state(self, window):
+        """Sync checkbox state with bot configuration."""
+        try:
+            if self.bot:
+                # Update checkbox to match bot's emote setting
+                window["-EMOTES_CHECKBOX-"].update(self.bot.config.enable_emotes)
+                status = "ON" if self.bot.config.enable_emotes else "OFF"
+                window["-BOT_STATUS-"].update(f"Emotes: {status}")
+                return f"Checkbox synced - Emotes: {status}"
+            else:
+                window["-BOT_STATUS-"].update("Bot not initialized")
+                return "Bot instance not available"
+        except Exception as e:
+            window["-BOT_STATUS-"].update(f"Error: {e}")
+            return f"Error syncing checkbox: {e}"
+    
     def handle_toggle_bot_vision(self, window):
         """Handle bot vision toggle."""
         try:
@@ -33,12 +49,12 @@ class MovementBotHandlers:
             window["-BOT_STATUS-"].update(f"Error: {e}")
             return f"Error toggling bot vision: {e}"
     
-    def handle_toggle_emotes(self, window):
-        """Handle emote toggle."""
+    def handle_emotes_checkbox(self, window, values):
+        """Handle emote checkbox change."""
         try:
             if self.bot:
-                # Toggle emotes in bot
-                self.bot.config.enable_emotes = not self.bot.config.enable_emotes
+                # Update emotes based on checkbox value
+                self.bot.config.enable_emotes = values["-EMOTES_CHECKBOX-"]
                 status = "ON" if self.bot.config.enable_emotes else "OFF"
                 window["-BOT_STATUS-"].update(f"Emotes: {status}")
                 return f"Emotes: {status}"
@@ -47,7 +63,7 @@ class MovementBotHandlers:
                 return "Bot instance not available"
         except Exception as e:
             window["-BOT_STATUS-"].update(f"Error: {e}")
-            return f"Error toggling emotes: {e}"
+            return f"Error updating emotes: {e}"
     
     def handle_delete_model(self, window):
         """Handle model deletion with confirmation."""
@@ -167,7 +183,7 @@ class MovementBotHandlers:
 movement_bot_handlers = MovementBotHandlers()
 
 
-def handle_movement_bot_event(event, window, bot_instance=None):
+def handle_movement_bot_event(event, window, values=None, bot_instance=None):
     """Handle movement bot GUI events."""
     # Update bot instance if provided
     if bot_instance:
@@ -176,8 +192,8 @@ def handle_movement_bot_event(event, window, bot_instance=None):
     # Route events to appropriate handlers
     if event == "-TOGGLE_BOT_VISION-":
         return movement_bot_handlers.handle_toggle_bot_vision(window)
-    elif event == "-TOGGLE_EMOTES-":
-        return movement_bot_handlers.handle_toggle_emotes(window)
+    elif event == "-EMOTES_CHECKBOX-":
+        return movement_bot_handlers.handle_emotes_checkbox(window, values)
     elif event == "-DELETE_MODEL-":
         return movement_bot_handlers.handle_delete_model(window)
     elif event == "-RESET_MODEL-":
@@ -188,3 +204,11 @@ def handle_movement_bot_event(event, window, bot_instance=None):
         return movement_bot_handlers.handle_save_model(window)
     
     return None
+
+
+def sync_movement_bot_ui(window, bot_instance=None):
+    """Sync UI elements with bot configuration."""
+    if bot_instance:
+        movement_bot_handlers.set_bot_instance(bot_instance)
+        return movement_bot_handlers.sync_checkbox_state(window)
+    return "Bot instance not available"

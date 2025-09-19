@@ -11,6 +11,7 @@ from FreeSimpleGUI import Window
 from pyclashbot.bot.worker import WorkerThread
 from pyclashbot.interface import disable_keys, user_config_keys
 from pyclashbot.interface.layout import create_window, no_jobs_popup
+from pyclashbot.interface.movement_bot_handlers import handle_movement_bot_event, sync_movement_bot_ui
 from pyclashbot.utils.caching import USER_SETTINGS_CACHE
 from pyclashbot.utils.cli_config import arg_parser
 from pyclashbot.utils.logger import Logger, initalize_pylogging
@@ -231,6 +232,8 @@ class BotApplication:
         """Handle the start button event."""
         self.logger = Logger(timed=True)
         self.thread = start_button_event(self.logger, self.window, values)
+        # Sync movement bot UI when bot starts
+        sync_movement_bot_ui(self.window, self.get_movement_bot_instance())
 
     def handle_stop_event(self):
         """Handle the stop button event."""
@@ -263,6 +266,14 @@ class BotApplication:
             self.logger.action_needed = False
             self.logger.action_callback = None
 
+    def get_movement_bot_instance(self):
+        """Get the movement bot instance from the worker thread."""
+        # TODO: Implement based on how the movement bot is accessed from the worker thread
+        # This might need to be updated based on the actual bot architecture
+        if self.thread and hasattr(self.thread, 'movement_bot'):
+            return self.thread.movement_bot
+        return None
+
     def cleanup(self):
         """Clean up resources when closing."""
         self.window.close()
@@ -292,6 +303,12 @@ class BotApplication:
                 self.handle_external_links(event)
             elif event == "action_button":
                 self.handle_action_button()
+            elif event in ["-TOGGLE_BOT_VISION-", "-EMOTES_CHECKBOX-", "-DELETE_MODEL-", 
+                          "-RESET_MODEL-", "-LOAD_MODEL-", "-SAVE_MODEL-"]:
+                # Handle movement bot events
+                result = handle_movement_bot_event(event, self.window, values, self.get_movement_bot_instance())
+                if result:
+                    self.logger.log(result)
 
             # Handle thread completion cleanup
             self.thread, self.logger = handle_thread_finished(self.window, self.thread, self.logger)
