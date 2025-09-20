@@ -12,6 +12,7 @@ from pyclashbot.bot.worker import WorkerThread
 from pyclashbot.interface import disable_keys, user_config_keys
 from pyclashbot.interface.layout import create_window, no_jobs_popup
 from pyclashbot.interface.movement_bot_handlers import handle_movement_bot_event, sync_movement_bot_ui
+from pyclashbot.ai.movement_bot_registry import get_movement_bot
 from pyclashbot.utils.caching import USER_SETTINGS_CACHE
 from pyclashbot.utils.cli_config import arg_parser
 from pyclashbot.utils.logger import Logger, initalize_pylogging
@@ -267,12 +268,8 @@ class BotApplication:
             self.logger.action_callback = None
 
     def get_movement_bot_instance(self):
-        """Get the movement bot instance from the worker thread."""
-        # TODO: Implement based on how the movement bot is accessed from the worker thread
-        # This might need to be updated based on the actual bot architecture
-        if self.thread and hasattr(self.thread, 'movement_bot'):
-            return self.thread.movement_bot
-        return None
+        """Get the movement bot instance from the global registry."""
+        return get_movement_bot()
 
     def cleanup(self):
         """Clean up resources when closing."""
@@ -306,7 +303,8 @@ class BotApplication:
             elif event in ["-TOGGLE_BOT_VISION-", "-EMOTES_CHECKBOX-", "-DELETE_MODEL-", 
                           "-RESET_MODEL-", "-LOAD_MODEL-", "-SAVE_MODEL-"]:
                 # Handle movement bot events
-                result = handle_movement_bot_event(event, self.window, values, self.get_movement_bot_instance())
+                bot_instance = self.get_movement_bot_instance()
+                result = handle_movement_bot_event(event, self.window, values, bot_instance)
                 if result:
                     self.logger.log(result)
 

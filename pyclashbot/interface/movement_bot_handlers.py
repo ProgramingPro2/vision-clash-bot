@@ -1,66 +1,111 @@
-"""Simple handlers for movement bot GUI controls integrated into main interface."""
+"""Handlers for movement bot GUI controls integrated into main interface.
+
+This module provides event handlers for the movement bot controls in the main GUI,
+including toggles for bot vision and emotes, as well as model management functions.
+The handlers work with a global registry system that allows settings to be applied
+even when the movement bot is not currently running.
+"""
 
 import os
 import tkinter as tk
 from tkinter import filedialog
+from typing import Optional, Dict, Any
+
 import FreeSimpleGUI as sg
+
+from ..ai.movement_bot_registry import set_movement_bot_setting, get_movement_bot_setting
 
 
 class MovementBotHandlers:
     """Simple handlers for movement bot controls in the main GUI."""
     
-    def __init__(self, bot_instance=None):
-        """Initialize with optional bot instance."""
+    def __init__(self, bot_instance: Optional[Any] = None) -> None:
+        """Initialize with optional bot instance.
+        
+        Args:
+            bot_instance: Optional movement bot instance
+        """
         self.bot = bot_instance
     
-    def set_bot_instance(self, bot_instance):
-        """Set the bot instance for handlers."""
+    def set_bot_instance(self, bot_instance: Optional[Any]) -> None:
+        """Set the bot instance for handlers.
+        
+        Args:
+            bot_instance: Movement bot instance to use for handlers
+        """
         self.bot = bot_instance
     
-    def sync_checkbox_state(self, window):
-        """Sync checkbox state with bot configuration."""
+    def sync_checkbox_state(self, window: sg.Window) -> str:
+        """Sync checkbox state with stored settings.
+        
+        Args:
+            window: FreeSimpleGUI window instance
+            
+        Returns:
+            Status message about the sync operation
+        """
         try:
-            if self.bot:
-                # Update checkbox to match bot's emote setting
-                window["-EMOTES_CHECKBOX-"].update(self.bot.config.enable_emotes)
-                status = "ON" if self.bot.config.enable_emotes else "OFF"
-                window["-BOT_STATUS-"].update(f"Emotes: {status}")
-                return f"Checkbox synced - Emotes: {status}"
-            else:
-                window["-BOT_STATUS-"].update("Bot not initialized")
-                return "Bot instance not available"
+            # Get current setting from registry
+            enable_emotes = get_movement_bot_setting('enable_emotes', True)
+            window["-EMOTES_CHECKBOX-"].update(enable_emotes)
+            
+            status = "ON" if enable_emotes else "OFF"
+            window["-BOT_STATUS-"].update(f"Emotes: {status}")
+            return f"Checkbox synced - Emotes: {status}"
         except Exception as e:
             window["-BOT_STATUS-"].update(f"Error: {e}")
             return f"Error syncing checkbox: {e}"
     
-    def handle_toggle_bot_vision(self, window):
-        """Handle bot vision toggle."""
+    def handle_toggle_bot_vision(self, window: sg.Window) -> str:
+        """Handle bot vision toggle.
+        
+        Args:
+            window: FreeSimpleGUI window instance
+            
+        Returns:
+            Status message about the toggle operation
+        """
         try:
+            # Toggle the setting in the registry
+            current_value = get_movement_bot_setting('enable_visualization', True)
+            new_value = not current_value
+            set_movement_bot_setting('enable_visualization', new_value)
+            
+            status = "ON" if new_value else "OFF"
+            window["-BOT_STATUS-"].update(f"Bot vision: {status}")
+            
             if self.bot:
-                # Toggle visualization in bot
-                self.bot.config.enable_visualization = not self.bot.config.enable_visualization
-                status = "ON" if self.bot.config.enable_visualization else "OFF"
-                window["-BOT_STATUS-"].update(f"Bot vision: {status}")
-                return f"Bot vision overlay: {status}"
+                return f"Bot vision overlay: {status} (Applied to running bot)"
             else:
-                window["-BOT_STATUS-"].update("Bot not initialized")
-                return "Bot instance not available"
+                return f"Bot vision overlay: {status} (Will be applied when bot starts)"
+                
         except Exception as e:
             window["-BOT_STATUS-"].update(f"Error: {e}")
             return f"Error toggling bot vision: {e}"
     
-    def handle_emotes_checkbox(self, window, values):
-        """Handle emote checkbox change."""
+    def handle_emotes_checkbox(self, window: sg.Window, values: Dict[str, Any]) -> str:
+        """Handle emote checkbox change.
+        
+        Args:
+            window: FreeSimpleGUI window instance
+            values: Dictionary of window values
+            
+        Returns:
+            Status message about the checkbox change
+        """
         try:
+            # Update the setting in the registry
+            new_value = values["-EMOTES_CHECKBOX-"]
+            set_movement_bot_setting('enable_emotes', new_value)
+            
+            status = "ON" if new_value else "OFF"
+            window["-BOT_STATUS-"].update(f"Emotes: {status}")
+            
             if self.bot:
-                # Update emotes based on checkbox value
-                self.bot.config.enable_emotes = values["-EMOTES_CHECKBOX-"]
-                status = "ON" if self.bot.config.enable_emotes else "OFF"
-                window["-BOT_STATUS-"].update(f"Emotes: {status}")
-                return f"Emotes: {status}"
+                return f"Emotes: {status} (Applied to running bot)"
             else:
-                window["-BOT_STATUS-"].update("Bot not initialized")
-                return "Bot instance not available"
+                return f"Emotes: {status} (Will be applied when bot starts)"
+                
         except Exception as e:
             window["-BOT_STATUS-"].update(f"Error: {e}")
             return f"Error updating emotes: {e}"
@@ -126,8 +171,8 @@ class MovementBotHandlers:
                 window["-BOT_STATUS-"].update("Model reset successfully")
                 return "Model reset successfully"
             else:
-                window["-BOT_STATUS-"].update("Bot not initialized")
-                return "Bot instance not available"
+                window["-BOT_STATUS-"].update("Movement bot not running - Start bot first")
+                return "Movement bot not running. Please start the bot with movement bot mode enabled first."
         except Exception as e:
             window["-BOT_STATUS-"].update(f"Error: {e}")
             return f"Error resetting model: {e}"
@@ -154,8 +199,8 @@ class MovementBotHandlers:
                 window["-BOT_STATUS-"].update("Model loaded successfully")
                 return f"Model loaded from: {file_path}"
             elif file_path:
-                window["-BOT_STATUS-"].update("Model file selected")
-                return f"Model file selected: {file_path} (Bot instance not available)"
+                window["-BOT_STATUS-"].update("Movement bot not running - Start bot first")
+                return f"Model file selected: {file_path} (Movement bot not running. Please start the bot with movement bot mode enabled first.)"
             else:
                 window["-BOT_STATUS-"].update("Model loading cancelled")
                 return "Model loading cancelled"
@@ -172,8 +217,8 @@ class MovementBotHandlers:
                 window["-BOT_STATUS-"].update("Model saved successfully")
                 return "Model saved successfully"
             else:
-                window["-BOT_STATUS-"].update("Bot not initialized")
-                return "Bot instance not available"
+                window["-BOT_STATUS-"].update("Movement bot not running - Start bot first")
+                return "Movement bot not running. Please start the bot with movement bot mode enabled first."
         except Exception as e:
             window["-BOT_STATUS-"].update(f"Error: {e}")
             return f"Error saving model: {e}"
@@ -183,8 +228,23 @@ class MovementBotHandlers:
 movement_bot_handlers = MovementBotHandlers()
 
 
-def handle_movement_bot_event(event, window, values=None, bot_instance=None):
-    """Handle movement bot GUI events."""
+def handle_movement_bot_event(
+    event: str, 
+    window: sg.Window, 
+    values: Optional[Dict[str, Any]] = None, 
+    bot_instance: Optional[Any] = None
+) -> Optional[str]:
+    """Handle movement bot GUI events.
+    
+    Args:
+        event: The GUI event that occurred
+        window: FreeSimpleGUI window instance
+        values: Optional dictionary of window values
+        bot_instance: Optional movement bot instance
+        
+    Returns:
+        Status message if event was handled, None otherwise
+    """
     # Update bot instance if provided
     if bot_instance:
         movement_bot_handlers.set_bot_instance(bot_instance)
@@ -206,8 +266,16 @@ def handle_movement_bot_event(event, window, values=None, bot_instance=None):
     return None
 
 
-def sync_movement_bot_ui(window, bot_instance=None):
-    """Sync UI elements with bot configuration."""
+def sync_movement_bot_ui(window: sg.Window, bot_instance: Optional[Any] = None) -> str:
+    """Sync UI elements with bot configuration.
+    
+    Args:
+        window: FreeSimpleGUI window instance
+        bot_instance: Optional movement bot instance
+        
+    Returns:
+        Status message about the sync operation
+    """
     if bot_instance:
         movement_bot_handlers.set_bot_instance(bot_instance)
         return movement_bot_handlers.sync_checkbox_state(window)

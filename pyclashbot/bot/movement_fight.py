@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from ..ai.movement_based_bot import BotConfig, MovementBasedBot
+from ..ai.movement_bot_registry import register_movement_bot, clear_movement_bot
 from ..detection.tower_health_detection import TowerHealth
 from ..detection.unit_tracking import TrackedUnit
 from ..utils.logger import Logger
@@ -39,6 +40,9 @@ class MovementFightManager:
         
         # Initialize movement-based bot with emulator
         self.movement_bot = MovementBasedBot(config, logger, emulator)
+        
+        # Register the bot globally for UI access
+        register_movement_bot(self.movement_bot)
         
         # Fight state tracking
         self.in_battle = False
@@ -527,4 +531,6 @@ class MovementFightManager:
         self.stop_battle_processing()
         if self.movement_bot:
             self.movement_bot.cleanup()
+        # Clear the global registry
+        clear_movement_bot()
         self.logger.log("Movement fight manager cleanup completed")

@@ -582,7 +582,18 @@ def play_a_card(emulator, logger, recording_flag: bool, battle_strategy: "Battle
     logger.change_status(f"Made the play {click_and_play_card_time_taken}s")
     logger.add_card_played()
 
-    if random.randint(0, 9) == 1:
+    # Check if movement bot emotes are enabled before sending emote
+    should_send_emote = True
+    try:
+        from ..ai.movement_bot_registry import get_movement_bot
+        movement_bot = get_movement_bot()
+        if movement_bot:
+            should_send_emote = movement_bot.config.enable_emotes
+    except Exception:
+        # If we can't check the setting, default to sending emotes
+        pass
+    
+    if should_send_emote and random.randint(0, 9) == 1:
         send_emote(emulator, logger)
     return True
 
