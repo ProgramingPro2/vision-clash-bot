@@ -36,7 +36,7 @@ class MovementBotHandlers:
         self.bot = bot_instance
     
     def sync_checkbox_state(self, window: sg.Window) -> str:
-        """Sync checkbox state with stored settings.
+        """Sync UI state with bot settings.
         
         Args:
             window: FreeSimpleGUI window instance
@@ -45,16 +45,24 @@ class MovementBotHandlers:
             Status message about the sync operation
         """
         try:
-            # Get current setting from registry
-            enable_emotes = get_movement_bot_setting('enable_emotes', True)
-            window["-EMOTES_CHECKBOX-"].update(enable_emotes)
+            # Update bot status
+            if self.bot:
+                window["-BOT_STATUS-"].update("Bot Running")
+                
+                # Update game duration
+                try:
+                    game_duration = self.bot.get_game_duration()
+                    window["-GAME_DURATION-"].update(f"{game_duration:.1f}s")
+                except Exception as e:
+                    window["-GAME_DURATION-"].update("N/A")
+            else:
+                window["-BOT_STATUS-"].update("Bot Stopped")
+                window["-GAME_DURATION-"].update("0.0s")
             
-            status = "ON" if enable_emotes else "OFF"
-            window["-BOT_STATUS-"].update(f"Emotes: {status}")
-            return f"Checkbox synced - Emotes: {status}"
+            return "UI synced with bot state"
         except Exception as e:
             window["-BOT_STATUS-"].update(f"Error: {e}")
-            return f"Error syncing checkbox: {e}"
+            return f"Error syncing UI: {e}"
     
     def handle_toggle_bot_vision(self, window: sg.Window) -> str:
         """Handle bot vision toggle.
@@ -83,32 +91,6 @@ class MovementBotHandlers:
             window["-BOT_STATUS-"].update(f"Error: {e}")
             return f"Error toggling bot vision: {e}"
     
-    def handle_emotes_checkbox(self, window: sg.Window, values: Dict[str, Any]) -> str:
-        """Handle emote checkbox change.
-        
-        Args:
-            window: FreeSimpleGUI window instance
-            values: Dictionary of window values
-            
-        Returns:
-            Status message about the checkbox change
-        """
-        try:
-            # Update the setting in the registry
-            new_value = values["-EMOTES_CHECKBOX-"]
-            set_movement_bot_setting('enable_emotes', new_value)
-            
-            status = "ON" if new_value else "OFF"
-            window["-BOT_STATUS-"].update(f"Emotes: {status}")
-            
-            if self.bot:
-                return f"Emotes: {status} (Applied to running bot)"
-            else:
-                return f"Emotes: {status} (Will be applied when bot starts)"
-                
-        except Exception as e:
-            window["-BOT_STATUS-"].update(f"Error: {e}")
-            return f"Error updating emotes: {e}"
     
     def handle_delete_model(self, window):
         """Handle model deletion with confirmation."""
@@ -252,8 +234,6 @@ def handle_movement_bot_event(
     # Route events to appropriate handlers
     if event == "-TOGGLE_BOT_VISION-":
         return movement_bot_handlers.handle_toggle_bot_vision(window)
-    elif event == "-EMOTES_CHECKBOX-":
-        return movement_bot_handlers.handle_emotes_checkbox(window, values)
     elif event == "-DELETE_MODEL-":
         return movement_bot_handlers.handle_delete_model(window)
     elif event == "-RESET_MODEL-":

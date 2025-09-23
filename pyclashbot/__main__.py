@@ -181,6 +181,18 @@ def update_layout(window: sg.Window, logger: Logger) -> None:
             if element is not None:
                 element.update(val)
     
+    # Update game duration if movement bot is running
+    try:
+        movement_bot = get_movement_bot()
+        if movement_bot:
+            game_duration = movement_bot.get_game_duration()
+            duration_element = window["-GAME_DURATION-"]
+            if duration_element is not None:
+                duration_element.update(f"{game_duration:.1f}s")
+    except Exception:
+        # Silently ignore errors - game duration is optional
+        pass
+    
     # Handle action button visibility and text
     action_button = window["action_button"]
     if action_button is not None:
@@ -300,7 +312,7 @@ class BotApplication:
                 self.handle_external_links(event)
             elif event == "action_button":
                 self.handle_action_button()
-            elif event in ["-TOGGLE_BOT_VISION-", "-EMOTES_CHECKBOX-", "-DELETE_MODEL-", 
+            elif event in ["-TOGGLE_BOT_VISION-", "-DELETE_MODEL-", 
                           "-RESET_MODEL-", "-LOAD_MODEL-", "-SAVE_MODEL-"]:
                 # Handle movement bot events
                 bot_instance = self.get_movement_bot_instance()

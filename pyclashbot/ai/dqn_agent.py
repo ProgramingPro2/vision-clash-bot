@@ -79,6 +79,8 @@ class GameReward:
     detection_reward: float = 0.0  # Reward for successful unit detection after placement
     elixir_efficiency_reward: float = 0.0  # Reward for good elixir management
     wait_reward: float = 0.0  # Reward for strategic waiting
+    elixir_spilling_penalty: float = 0.0  # Penalty for wasting elixir when at max capacity
+    battle_speed_reward: float = 0.0  # Exponential reward for faster battle completion
     game_outcome: Optional[float] = None  # Final game outcome (-1, 0, 1 for loss, draw, win)
     timestamp: float = 0.0  # When the reward was received
 
@@ -524,7 +526,9 @@ class DQNAgent:
             exp[2].placement_reward + 
             exp[2].detection_reward * 1.5 +  # Higher weight for detection
             exp[2].elixir_efficiency_reward + 
-            exp[2].wait_reward
+            exp[2].wait_reward +
+            exp[2].elixir_spilling_penalty * 3.0 +  # Strong penalty for elixir spilling
+            exp[2].battle_speed_reward * 2.0  # High reward for fast wins
             for exp in batch
         ]).to(self.device)
         

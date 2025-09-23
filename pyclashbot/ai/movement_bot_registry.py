@@ -15,7 +15,6 @@ class MovementBotRegistry:
     
     _instance: Optional[MovementBasedBot] = None
     _settings: Dict[str, Any] = {
-        'enable_emotes': True,
         'enable_visualization': True
     }
     
@@ -25,7 +24,6 @@ class MovementBotRegistry:
         cls._instance = bot
         # Apply stored settings to the bot
         if bot and hasattr(bot, 'config'):
-            bot.config.enable_emotes = cls._settings.get('enable_emotes', True)
             bot.config.enable_visualization = cls._settings.get('enable_visualization', True)
     
     @classmethod
@@ -44,9 +42,7 @@ class MovementBotRegistry:
         cls._settings[key] = value
         # If bot is already running, apply the setting immediately
         if cls._instance and hasattr(cls._instance, 'config'):
-            if key == 'enable_emotes':
-                cls._instance.config.enable_emotes = value
-            elif key == 'enable_visualization':
+            if key == 'enable_visualization':
                 cls._instance.config.enable_visualization = value
     
     @classmethod

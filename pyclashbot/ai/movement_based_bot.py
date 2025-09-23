@@ -18,18 +18,6 @@ from ..utils.logger import Logger
 from .dqn_agent import DQNAgent, GameAction, GameReward, GameState, GameStateProcessor
 from ..bot.card_detection import check_which_cards_are_available, identify_hand_cards, get_card_group
 
-# Emote coordinates (from original bot)
-EMOTE_BUTTON_COORD = (67, 521)
-EMOTE_ICON_COORDS = [
-    (124, 419),
-    (182, 420),
-    (255, 411),
-    (312, 423),
-    (133, 471),
-    (188, 472),
-    (243, 469),
-    (308, 470),
-]
 
 
 @dataclass
@@ -68,9 +56,6 @@ class BotConfig:
     save_training_data: bool = True
     collect_training_data: bool = True  # Always collect data for training
     
-    # Emote settings (like original bot)
-    enable_emotes: bool = True
-    emote_chance: float = 0.1  # 10% chance to emote after playing a card
     
     def __post_init__(self):
         if self.movement_detection_config is None:
@@ -264,6 +249,14 @@ class MovementBasedBot:
         self.last_frame_time = time.time()
         self.battle_start_time = time.time()
         
+        # Game duration tracking
+        self.game_duration = 0.0  # Current game duration in seconds
+        
+        # Elixir spilling tracking
+        self.last_elixir_count = 0.0
+        self.elixir_spilled_total = 0.0  # Total elixir wasted due to spilling
+        self.max_elixir = 10.0  # Maximum elixir capacity
+        
         # Game state tracking
         self.current_game_state = None
         self.previous_game_state = None
@@ -279,8 +272,6 @@ class MovementBasedBot:
         self.last_save_time = time.time()
         self.model_save_history = []
         
-        # Emote cooldown to prevent conflicts with card placement
-        self.emote_cooldown_end = 0
         
         # Threading for real-time processing
         self.processing_queue = queue.Queue(maxsize=10)
@@ -599,41 +590,6 @@ class MovementBasedBot:
             # Final fallback
             return 5.0
     
-    def send_emote(self):
-        """Send a random emote (like the original bot)."""
-        self.logger.log(f"send_emote called: enable_emotes={self.config.enable_emotes}, emulator={self.emulator is not None}")
-        
-        if not self.config.enable_emotes or not self.emulator:
-            self.logger.log("Emote skipped: not enabled or no emulator")
-            return
-        
-        try:
-            self.logger.log("Hitting an emote")
-            
-            # Set emote cooldown (2 seconds to prevent conflicts)
-            self.emote_cooldown_end = time.time() + 2.0
-            
-            # Click emote button
-            self.emulator.click(EMOTE_BUTTON_COORD[0], EMOTE_BUTTON_COORD[1])
-            time.sleep(0.33)
-            
-            # Click random emote icon
-            import random
-            emote_coord = random.choice(EMOTE_ICON_COORDS)
-            self.emulator.click(emote_coord[0], emote_coord[1])
-            
-            self.logger.log("Emote sent successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to send emote: {e}")
-    
-    def is_emote_cooldown_active(self) -> bool:
-        """Check if emote cooldown is currently active."""
-        current_time = time.time()
-        is_active = current_time < self.emote_cooldown_end
-        if self.frame_count % 30 == 0:  # Log every 30 frames to avoid spam
-            self.logger.log(f"Emote cooldown check: current={current_time:.2f}, end={self.emote_cooldown_end:.2f}, active={is_active}")
-        return is_active
     
     def _get_card_elixir_costs(self, available_cards: List[int]) -> List[float]:
         """
@@ -717,11 +673,7 @@ class MovementBasedBot:
             detected_blobs = []
             
             if self.movement_detector:
-                # Skip movement detection during emote cooldown to avoid conflicts
-                if self.is_emote_cooldown_active():
-                    detected_blobs = []
-                else:
-                    detected_blobs = self.movement_detector.detect_units(frame)
+                detected_blobs = self.movement_detector.detect_units(frame)
                 
                 results['detected_units'] = detected_blobs
             
@@ -841,6 +793,10 @@ class MovementBasedBot:
             self.logger.error(f"Error processing frame: {e}")
             results['error'] = str(e)
         
+        # Update game duration
+        self.game_duration = time.time() - self.battle_start_time
+        results['game_duration'] = self.game_duration
+        
         # Calculate processing time
         processing_time = time.time() - start_time
         results['processing_time'] = processing_time
@@ -937,12 +893,6 @@ class MovementBasedBot:
             return action
         
         elif action.action_type == "play_card":
-            # Check if emote cooldown is active - don't place cards during emote
-            if self.is_emote_cooldown_active():
-                self.logger.log("Skipping card placement - emote cooldown active")
-                action.placement_success = False
-                action.detection_success = False
-                return action
             
             try:
                 # Convert normalized position to screen coordinates
@@ -967,15 +917,6 @@ class MovementBasedBot:
                 # Check for unit detection in next few frames
                 self._check_detection_success(action)
                 
-                # Send emote with configured chance (like original bot)
-                if self.config.enable_emotes:
-                    import random
-                    emote_roll = random.random()
-                    if self.frame_count % 5 == 0:
-                        self.logger.log(f"Emote check: roll={emote_roll:.3f}, chance={self.config.emote_chance}")
-                    if emote_roll < self.config.emote_chance:
-                        self.logger.log("Emote triggered!")
-                        self.send_emote()
                 
             except Exception as e:
                 self.logger.error(f"Failed to execute card action: {e}")
@@ -1081,6 +1022,8 @@ class MovementBasedBot:
         detection_reward = 0.0
         elixir_efficiency_reward = 0.0
         wait_reward = 0.0
+        elixir_spilling_penalty = 0.0
+        battle_speed_reward = 0.0
         
         if action and self.dqn_agent:
             # Calculate placement reward with position quality
@@ -1095,12 +1038,20 @@ class MovementBasedBot:
             # Calculate wait reward
             wait_reward = self._calculate_enhanced_wait_reward(action, previous_state, current_state)
         
+        # Calculate elixir spilling penalty (always calculated)
+        elixir_spilling_penalty = self._calculate_elixir_spilling_penalty(current_state, previous_state)
+        
+        # Update last elixir count for next calculation
+        self.last_elixir_count = current_state.elixir_count
+        
         return GameReward(
             immediate_reward=immediate_reward,
             placement_reward=placement_reward,
             detection_reward=detection_reward,
             elixir_efficiency_reward=elixir_efficiency_reward,
             wait_reward=wait_reward,
+            elixir_spilling_penalty=elixir_spilling_penalty,
+            battle_speed_reward=battle_speed_reward,
             timestamp=time.time()
         )
     
@@ -1164,6 +1115,78 @@ class MovementBasedBot:
             return 0.03  # Reward waiting when field is empty
         else:
             return 0.01  # Small reward for strategic waiting
+    
+    def _calculate_elixir_spilling_penalty(self, current_state: GameState, previous_state: GameState) -> float:
+        """
+        Calculate penalty for elixir spilling (wasting elixir when at max capacity).
+        
+        Args:
+            current_state: Current game state
+            previous_state: Previous game state
+            
+        Returns:
+            Penalty value (negative number)
+        """
+        penalty = 0.0
+        
+        # Check if we were at max elixir and didn't use any
+        if previous_state.elixir_count >= self.max_elixir:
+            # If we're still at max elixir, we're wasting regeneration
+            if current_state.elixir_count >= self.max_elixir:
+                # Calculate how much elixir we could have regenerated
+                time_elapsed = time.time() - self.last_action_time if self.last_action_time > 0 else 0.1
+                
+                # Elixir regenerates at different rates based on game phase
+                if time_elapsed > 0:
+                    # Estimate regeneration rate (1 elixir per 2.8 seconds normally)
+                    regeneration_rate = 1.0 / 2.8  # elixir per second
+                    potential_regeneration = time_elapsed * regeneration_rate
+                    
+                    # Penalty is proportional to wasted elixir
+                    penalty = -potential_regeneration * 0.5  # Strong penalty for wasting elixir
+                    
+                    # Track total spilled elixir
+                    self.elixir_spilled_total += potential_regeneration
+                    
+                    if self.frame_count % 30 == 0:  # Log every 30 frames
+                        self.logger.log(f"Elixir spilling detected: {potential_regeneration:.2f} elixir wasted, penalty: {penalty:.3f}")
+        
+        return penalty
+    
+    def _calculate_battle_speed_reward(self, battle_result: str, battle_duration: float) -> float:
+        """
+        Calculate exponential reward for faster battle completion.
+        
+        Args:
+            battle_result: Result of the battle ("win", "loss", "draw")
+            battle_duration: Duration of the battle in seconds
+            
+        Returns:
+            Reward value (positive for wins, scaled by speed)
+        """
+        if battle_result != "win":
+            return 0.0  # Only reward speed for wins
+        
+        # Base reward for winning
+        base_win_reward = 10.0
+        
+        # Exponential scaling based on speed
+        # Faster battles get exponentially higher rewards
+        # Typical battle duration is 180 seconds (3 minutes)
+        max_duration = 180.0
+        
+        # Calculate speed factor (higher for faster battles)
+        speed_factor = max_duration / max(battle_duration, 1.0)  # Avoid division by zero
+        
+        # Exponential scaling: reward = base * speed_factor^2
+        # This means a 90-second win gets 4x the base reward
+        # A 60-second win gets 9x the base reward
+        exponential_reward = base_win_reward * (speed_factor ** 2)
+        
+        if self.logger:
+            self.logger.log(f"Battle speed reward: {battle_duration:.1f}s win = {exponential_reward:.2f} reward (speed factor: {speed_factor:.2f})")
+        
+        return exponential_reward
     
     def _train_dqn(self):
         """Train the DQN agent."""
@@ -1285,6 +1308,10 @@ class MovementBasedBot:
             self.training_data.clear()
             self.logger.log("Training state reset")
     
+    def get_game_duration(self) -> float:
+        """Get current game duration in seconds."""
+        return self.game_duration
+    
     def get_performance_stats(self) -> Dict:
         """Get bot performance statistics."""
         avg_processing_time = np.mean(self.processing_times) if self.processing_times else 0
@@ -1295,7 +1322,8 @@ class MovementBasedBot:
             'avg_processing_time': avg_processing_time,
             'fps': fps,
             'target_fps': self.config.target_fps,
-            'fps_performance': fps / self.config.target_fps if self.config.target_fps > 0 else 0
+            'fps_performance': fps / self.config.target_fps if self.config.target_fps > 0 else 0,
+            'game_duration': self.game_duration
         }
         
         # Add component-specific stats
@@ -1379,8 +1407,52 @@ class MovementBasedBot:
             self.logger.error(f"Failed to auto-load model: {e}")
     
     def on_battle_end(self, battle_result: str):
-        """Called when a battle ends - handles auto-save logic."""
+        """Called when a battle ends - handles auto-save logic and battle speed rewards."""
         self.battle_count += 1
+        
+        # Calculate battle duration
+        battle_duration = time.time() - self.battle_start_time
+        self.game_duration = battle_duration
+        
+        # Calculate battle speed reward
+        speed_reward = self._calculate_battle_speed_reward(battle_result, battle_duration)
+        
+        # Apply battle speed reward to the last action if available
+        if self.last_action and self.dqn_agent and speed_reward > 0:
+            # Create a final reward for the battle outcome
+            final_reward = GameReward(
+                immediate_reward=0.0,
+                placement_reward=0.0,
+                detection_reward=0.0,
+                elixir_efficiency_reward=0.0,
+                wait_reward=0.0,
+                elixir_spilling_penalty=0.0,
+                battle_speed_reward=speed_reward,
+                game_outcome=1.0 if battle_result == "win" else (-1.0 if battle_result == "loss" else 0.0),
+                timestamp=time.time()
+            )
+            
+            # Store the final reward for training
+            if self.previous_game_state is not None:
+                training_data = {
+                    'state': self.previous_game_state,
+                    'action': self.last_action,
+                    'reward': final_reward,
+                    'next_state': self.current_game_state,
+                    'done': True  # Battle is over
+                }
+                self.training_data.append(training_data)
+                
+                # Train immediately on the final reward
+                if len(self.training_data) >= 1:
+                    self._train_dqn()
+        
+        # Log battle statistics
+        if self.logger:
+            self.logger.log(f"Battle ended: {battle_result} in {battle_duration:.1f}s")
+            self.logger.log(f"Total elixir spilled: {self.elixir_spilled_total:.2f}")
+            if speed_reward > 0:
+                self.logger.log(f"Battle speed reward: {speed_reward:.2f}")
         
         # Auto-save based on interval
         if self.battle_count % self.config.auto_save_interval == 0:
@@ -1389,6 +1461,11 @@ class MovementBasedBot:
         # Save training data
         if self.config.save_training_data and self.episode_data:
             self._save_episode_data(battle_result)
+        
+        # Reset battle tracking variables
+        self.battle_start_time = time.time()
+        self.elixir_spilled_total = 0.0
+        self.last_elixir_count = 0.0
     
     def _save_episode_data(self, battle_result: str):
         """Save episode training data."""

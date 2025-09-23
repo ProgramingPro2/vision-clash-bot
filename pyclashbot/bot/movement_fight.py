@@ -50,6 +50,9 @@ class MovementFightManager:
         self.last_action_time = 0
         self.action_cooldown = 0.5  # Minimum time between actions (reduced for more responsiveness)
         
+        # Game duration tracking
+        self.game_duration = 0.0  # Current game duration in seconds
+        
         # Performance tracking
         self.frames_processed = 0
         self.actions_taken = 0
@@ -162,6 +165,9 @@ class MovementFightManager:
                 processing_start = time.time()
                 results = self.movement_bot.process_frame(frame)
                 processing_time = time.time() - processing_start
+                
+                # Update game duration
+                self.game_duration = time.time() - self.battle_start_time
                 
                 self.frames_processed += 1
                 self.processing_times.append(processing_time)
@@ -484,6 +490,10 @@ class MovementFightManager:
         self.logger.log(f"  Active Tracks: {bot_stats.get('active_tracks', 0)}")
         self.logger.log(f"  Total Tracks Created: {bot_stats.get('total_tracks_created', 0)}")
     
+    def get_game_duration(self) -> float:
+        """Get current game duration in seconds."""
+        return self.game_duration
+    
     def get_performance_stats(self) -> Dict[str, Any]:
         """Get performance statistics."""
         avg_processing_time = np.mean(self.processing_times) if self.processing_times else 0
@@ -495,7 +505,8 @@ class MovementFightManager:
             'avg_processing_time': avg_processing_time,
             'fps': fps,
             'in_battle': self.in_battle,
-            'battle_duration': time.time() - self.battle_start_time if self.in_battle else 0
+            'battle_duration': time.time() - self.battle_start_time if self.in_battle else 0,
+            'game_duration': self.game_duration
         }
         
         # Add movement bot stats

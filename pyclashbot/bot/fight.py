@@ -45,17 +45,6 @@ QUICKMATCH_BUTTON_COORD = (
 )  # coord of the quickmatch button after you click the battle button
 ELIXER_WAIT_TIMEOUT = 40  # way to high but someone got errors with that so idk
 
-EMOTE_BUTTON_COORD = (67, 521)
-EMOTE_ICON_COORDS = [
-    (124, 419),
-    (182, 420),
-    (255, 411),
-    (312, 423),
-    (133, 471),
-    (188, 472),
-    (243, 469),
-    (308, 470),
-]
 CLASH_MAIN_DEADSPACE_COORD = (20, 520)
 ELIXIR_COORDS = [
     [613, 149],
@@ -196,16 +185,6 @@ def start_fight(emulator, logger, mode) -> bool:
     return True
 
 
-def send_emote(emulator, logger: Logger):
-    """Method to do an emote in a fight"""
-    logger.change_status("Hitting an emote")
-
-    # click emote button
-    emulator.click(EMOTE_BUTTON_COORD[0], EMOTE_BUTTON_COORD[1])
-    time.sleep(0.33)
-
-    emote_coord = random.choice(EMOTE_ICON_COORDS)
-    emulator.click(emote_coord[0], emote_coord[1])
 
 
 def mag_dump(emulator, logger):
@@ -582,19 +561,6 @@ def play_a_card(emulator, logger, recording_flag: bool, battle_strategy: "Battle
     logger.change_status(f"Made the play {click_and_play_card_time_taken}s")
     logger.add_card_played()
 
-    # Check if movement bot emotes are enabled before sending emote
-    should_send_emote = True
-    try:
-        from ..ai.movement_bot_registry import get_movement_bot
-        movement_bot = get_movement_bot()
-        if movement_bot:
-            should_send_emote = movement_bot.config.enable_emotes
-    except Exception:
-        # If we can't check the setting, default to sending emotes
-        pass
-    
-    if should_send_emote and random.randint(0, 9) == 1:
-        send_emote(emulator, logger)
     return True
 
 

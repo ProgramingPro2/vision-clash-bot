@@ -216,8 +216,7 @@ def build_bot_stats() -> sg.Frame:
         [sg.HSeparator()],
         
         # Toggle buttons and checkboxes
-        [sg.Button("Toggle Bot Vision", key="-TOGGLE_BOT_VISION-", size=(15, 1)),
-         sg.Checkbox("Enable Emotes", key="-EMOTES_CHECKBOX-", default=True, size=(15, 1))],
+        [sg.Button("Toggle Bot Vision", key="-TOGGLE_BOT_VISION-", size=(15, 1))],
         
         # Model management buttons
         [sg.Button("Delete Model", key="-DELETE_MODEL-", size=(15, 1), button_color=("white", "red")),
@@ -228,6 +227,7 @@ def build_bot_stats() -> sg.Frame:
         
         # Status display
         [sg.Text("Bot Status:"), sg.Text("Ready", key="-BOT_STATUS-", size=(20, 1))],
+        [sg.Text("Game Duration:"), sg.Text("0.0s", key="-GAME_DURATION-", size=(15, 1))],
     ]
     
     # Combine stats and controls
