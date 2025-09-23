@@ -203,7 +203,9 @@ class TowerHealthDetector:
             numbers = re.findall(r'\d+', text)
             if numbers:
                 return int(numbers[0])
-        except Exception:
+        except Exception as e:
+            # Log OCR errors for debugging
+            print(f"OCR Error: {e}")
             pass
         
         return None
@@ -331,27 +333,38 @@ class TowerHealthDetector:
         
         # Detect each tower
         for region_name in self.tower_regions:
-            region = self.extract_tower_region(frame, region_name)
-            health_value, confidence = self.detect_tower_health_with_logic(region, region_name)
-            
-            if health_value is not None:
-                if region_name == 'own_left':
-                    tower_health.left_tower_health = health_value
-                elif region_name == 'own_right':
-                    tower_health.right_tower_health = health_value
-                elif region_name == 'enemy_left':
-                    tower_health.enemy_left_tower_health = health_value
-                elif region_name == 'enemy_right':
-                    tower_health.enemy_right_tower_health = health_value
+            try:
+                region = self.extract_tower_region(frame, region_name)
+                health_value, confidence = self.detect_tower_health_with_logic(region, region_name)
                 
-                total_confidence += confidence
-                detected_count += 1
+                if health_value is not None:
+                    if region_name == 'own_left':
+                        tower_health.left_tower_health = health_value
+                    elif region_name == 'own_right':
+                        tower_health.right_tower_health = health_value
+                    elif region_name == 'enemy_left':
+                        tower_health.enemy_left_tower_health = health_value
+                    elif region_name == 'enemy_right':
+                        tower_health.enemy_right_tower_health = health_value
+                    
+                    total_confidence += confidence
+                    detected_count += 1
+                    
+                    # Debug logging
+                    print(f"Tower Health Debug: {region_name} = {health_value} (confidence: {confidence:.2f})")
+                else:
+                    print(f"Tower Health Debug: {region_name} = No detection")
+                    
+            except Exception as e:
+                print(f"Tower Health Debug: Error detecting {region_name}: {e}")
         
         # Calculate overall confidence
         if detected_count > 0:
             tower_health.confidence = total_confidence / detected_count
         
         tower_health.timestamp = cv2.getTickCount() / cv2.getTickFrequency()
+        
+        print(f"Tower Health Debug: Overall confidence: {tower_health.confidence:.2f}, Detected: {detected_count}/4")
         
         return tower_health
     
