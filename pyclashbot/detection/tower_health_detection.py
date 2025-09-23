@@ -23,17 +23,20 @@ class TowerHealth:
 class TowerHealthDetector:
     """Detects tower health using OCR and template matching."""
     
-    def __init__(self):
+    def __init__(self, screen_width: int = 419, screen_height: int = 633):
         """Initialize tower health detector."""
-        # Screen dimensions: 3.5" wide × 6.5" tall
-        # Tower health regions based on physical screen measurements
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        
+        # Tower health regions based on normalized coordinates (0-1 range)
+        # These are approximate positions for Clash Royale towers
         self.tower_regions = {
-            # Enemy towers: Y position 0.75-1.25" from top, X position 0.5-1.5" from side
-            'enemy_left': (0.5, 0.75, 1.0, 0.5),    # x, y, width, height (inches)
-            'enemy_right': (2.0, 0.75, 1.0, 0.5),   # x, y, width, height (inches)
-            # My towers: 3" Y difference from enemy towers
-            'own_left': (0.5, 3.75, 1.0, 0.5),      # x, y, width, height (inches)
-            'own_right': (2.0, 3.75, 1.0, 0.5)      # x, y, width, height (inches)
+            # Enemy towers: Top portion of screen
+            'enemy_left': (0.15, 0.15, 0.25, 0.15),    # x, y, width, height (normalized)
+            'enemy_right': (0.60, 0.15, 0.25, 0.15),   # x, y, width, height (normalized)
+            # My towers: Bottom portion of screen
+            'own_left': (0.15, 0.70, 0.25, 0.15),      # x, y, width, height (normalized)
+            'own_right': (0.60, 0.70, 0.25, 0.15)      # x, y, width, height (normalized)
         }
         
         # Track if towers have been damaged (health bars only appear after first damage)
@@ -105,18 +108,14 @@ class TowerHealthDetector:
         if region_name not in self.tower_regions:
             return np.array([])
         
-        x_inches, y_inches, w_inches, h_inches = self.tower_regions[region_name]
+        x_norm, y_norm, w_norm, h_norm = self.tower_regions[region_name]
         height, width = frame.shape[:2]
         
-        # Convert inch coordinates to pixel coordinates
-        # Assuming screen is 3.5" wide × 6.5" tall
-        screen_width_inches = 3.5
-        screen_height_inches = 6.5
-        
-        x1 = int((x_inches / screen_width_inches) * width)
-        y1 = int((y_inches / screen_height_inches) * height)
-        x2 = int(((x_inches + w_inches) / screen_width_inches) * width)
-        y2 = int(((y_inches + h_inches) / screen_height_inches) * height)
+        # Convert normalized coordinates to pixel coordinates
+        x1 = int(x_norm * width)
+        y1 = int(y_norm * height)
+        x2 = int((x_norm + w_norm) * width)
+        y2 = int((y_norm + h_norm) * height)
         
         # Ensure coordinates are within frame bounds
         x1 = max(0, min(x1, width - 1))

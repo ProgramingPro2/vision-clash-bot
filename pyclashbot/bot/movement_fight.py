@@ -13,9 +13,9 @@ from ..detection.tower_health_detection import TowerHealth
 from ..detection.unit_tracking import TrackedUnit
 from ..utils.logger import Logger
 from .card_detection import check_which_cards_are_available
+from .nav import check_if_in_battle
 from .fight import (
     check_for_in_battle_with_delay,
-    check_if_in_battle,
     create_default_bridge_iar,
     play_a_card,
     wait_for_elixer,
@@ -49,6 +49,11 @@ class MovementFightManager:
         self.battle_start_time = 0
         self.last_action_time = 0
         self.action_cooldown = 0.5  # Minimum time between actions (reduced for more responsiveness)
+        
+        # Robust battle detection
+        self.battle_detection_history = []
+        self.battle_detection_window = 5  # Number of frames to consider
+        self.battle_detection_threshold = 3  # Minimum positive detections needed
         
         # Game duration tracking
         self.game_duration = 0.0  # Current game duration in seconds
@@ -400,8 +405,8 @@ class MovementFightManager:
                     except Exception as e:
                         self.logger.error(f"Direct processing failed: {e}")
                 
-                # Check if still in battle
-                if not check_if_in_battle(self.emulator):
+                # Check if still in battle using robust detection
+                if not self._is_still_in_battle_robust():
                     self.logger.change_status("Not in battle anymore!")
                     break
                 
@@ -471,6 +476,42 @@ class MovementFightManager:
         self.last_action_time = current_time
         
         return executed_action
+    
+    def _is_still_in_battle_robust(self) -> bool:
+        """
+        Robust battle detection that handles frame outliers.
+        Uses a sliding window approach to avoid false negatives from single frame glitches.
+        
+        Returns:
+            bool: True if still in battle (based on recent detection history)
+        """
+        # Get current battle detection result
+        current_detection = check_if_in_battle(self.emulator)
+        
+        # Add to history
+        self.battle_detection_history.append(current_detection)
+        
+        # Keep only the last N detections
+        if len(self.battle_detection_history) > self.battle_detection_window:
+            self.battle_detection_history.pop(0)
+        
+        # Need at least threshold number of positive detections in recent history
+        if len(self.battle_detection_history) < self.battle_detection_threshold:
+            # Not enough data yet, assume still in battle
+            return True
+        
+        # Count positive detections in recent history
+        positive_detections = sum(self.battle_detection_history)
+        
+        # If we have enough positive detections, we're still in battle
+        still_in_battle = positive_detections >= self.battle_detection_threshold
+        
+        # Log detection details for debugging
+        if not still_in_battle:
+            self.logger.change_status(f"Battle detection failed: {positive_detections}/{len(self.battle_detection_history)} positive in recent history")
+            self.logger.change_status(f"Detection history: {self.battle_detection_history}")
+        
+        return still_in_battle
     
     def _log_fight_statistics(self):
         """Log fight statistics."""

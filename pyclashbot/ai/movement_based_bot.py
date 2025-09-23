@@ -324,7 +324,10 @@ class MovementBasedBot:
             # Tower health detector
             if self.config.tower_health_enabled:
                 try:
-                    self.tower_health_detector = TowerHealthDetector()
+                    self.tower_health_detector = TowerHealthDetector(
+                        screen_width=self.state_processor.screen_width,
+                        screen_height=self.state_processor.screen_height
+                    )
                     self.logger.log("Tower health detector initialized successfully")
                     components_initialized += 1
                 except Exception as e:
@@ -700,7 +703,12 @@ class MovementBasedBot:
                 elixir_count = self._cached_elixir
                 
                 # Get time remaining (placeholder)
-                time_remaining = 120.0  # Placeholder
+                # Calculate time remaining based on battle duration
+                if self.battle_start_time > 0:
+                    elapsed_time = time.time() - self.battle_start_time
+                    time_remaining = max(0.0, 180.0 - elapsed_time)  # 3 minutes = 180 seconds
+                else:
+                    time_remaining = 180.0  # Default to full time if battle not started
                 
                 # Get card availability (placeholder)
                 card_availability = [True, True, True, True]  # Placeholder
@@ -1191,31 +1199,38 @@ class MovementBasedBot:
     def _train_dqn(self):
         """Train the DQN agent."""
         if not self.dqn_agent or len(self.training_data) < 32:
+            self.logger.log(f"Training skipped: dqn_agent={self.dqn_agent is not None}, training_data={len(self.training_data)}")
             return
         
         try:
             # Sample batch from training data
             batch = self.training_data[-32:]  # Use last 32 experiences
             
-            # Train on batch
+            self.logger.log(f"Training DQN with {len(batch)} experiences, DQN memory size: {len(self.dqn_agent.memory)}")
+            
+            # Train on batch - add experiences to DQN memory
             for data in batch:
                 self.dqn_agent.remember(
                     data['state'],
                     data['action'],
-                    data['reward'],
+                    data['reward'],  # This is a GameReward object
                     data['next_state'],
                     data['done']
                 )
             
+            self.logger.log(f"After adding experiences, DQN memory size: {len(self.dqn_agent.memory)}")
+            
             # Perform training step
             loss = self.dqn_agent.replay()
             
-            if self.frame_count % 100 == 0:  # Log every 100 frames
-                stats = self.dqn_agent.get_training_stats()
-                self.logger.log(f"DQN Training - Loss: {loss:.4f}, Epsilon: {stats['epsilon']:.3f}")
+            # Get training stats after training
+            stats = self.dqn_agent.get_training_stats()
+            self.logger.log(f"DQN Training - Loss: {loss:.4f}, Epsilon: {stats['epsilon']:.3f}, Training Step: {stats['training_step']}")
             
         except Exception as e:
             self.logger.error(f"Error training DQN: {e}")
+            import traceback
+            self.logger.error(f"Training error traceback: {traceback.format_exc()}")
     
     def _create_visualization(self, frame: np.ndarray, results: Dict) -> np.ndarray:
         """Create visualization of bot processing results."""

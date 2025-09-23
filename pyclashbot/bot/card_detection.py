@@ -4151,7 +4151,7 @@ def calculate_offset(card_name, card_data, collected_data_array):
 
 def find_closest_card(collected_data):
     best_card = None
-    best_offset = 1001
+    best_offset = float('inf')
 
     collected_data_array = numpy.array(
         [list(corner.values()) for corner in collected_data],
@@ -4167,9 +4167,12 @@ def find_closest_card(collected_data):
             best_offset = total_offset
             best_card = card_name
 
-    if best_offset > 1000:
+    # More lenient threshold - allow higher offsets for better card detection
+    if best_offset > 5000:  # Increased from 1000 to 5000
+        print(f"Card detection: Best offset {best_offset} too high, returning UNKNOWN")
         return "UNKNOWN"
 
+    print(f"Card detection: Best match {best_card} with offset {best_offset}")
     return best_card
 
 
