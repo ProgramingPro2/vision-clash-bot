@@ -597,7 +597,40 @@ class DQNAgent:
         try:
             if self.logger:
                 self.logger.log("DQN Replay: Computing current Q values...")
-            current_outputs = self.q_network(states)
+                self.logger.log(f"DQN Replay: States tensor shape: {states.shape}, dtype: {states.dtype}, device: {states.device}")
+                self.logger.log(f"DQN Replay: Q-network device: {next(iter(self.q_network.parameters())).device}")
+                self.logger.log(f"DQN Replay: Expected device: {self.device}")
+            
+            # Ensure states are on the correct device
+            if states.device != self.device:
+                if self.logger:
+                    self.logger.log(f"DQN Replay: Moving states from {states.device} to {self.device}")
+                states = states.to(self.device)
+            
+            # Check for NaN or inf values in input
+            if torch.isnan(states).any() or torch.isinf(states).any():
+                if self.logger:
+                    self.logger.error("DQN Replay: Input states contain NaN or inf values!")
+                return 0.0
+            
+            try:
+                current_outputs = self.q_network(states)
+            except Exception as forward_error:
+                if self.logger:
+                    self.logger.error(f"DQN Replay: Neural network forward pass failed: {forward_error}")
+                    import traceback
+                    self.logger.error(f"DQN Replay: Forward pass traceback: {traceback.format_exc()}")
+                return 0.0
+            
+            if self.logger:
+                self.logger.log(f"DQN Replay: Current outputs shape: {current_outputs.shape}")
+            
+            # Check for NaN or inf values in output
+            if torch.isnan(current_outputs).any() or torch.isinf(current_outputs).any():
+                if self.logger:
+                    self.logger.error("DQN Replay: Q-network output contains NaN or inf values!")
+                return 0.0
+            
             current_action_q = current_outputs[:, :5].gather(1, actions.unsqueeze(1))
             current_positions = current_outputs[:, 5:7]
             
