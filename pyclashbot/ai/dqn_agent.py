@@ -616,9 +616,29 @@ class DQNAgent:
             try:
                 if self.logger:
                     self.logger.log("DQN Replay: About to call q_network forward pass...")
+                
+                # Validate model state before forward pass
+                if self.q_network is None:
+                    if self.logger:
+                        self.logger.error("DQN Replay: Q-network is None!")
+                    return 0.0
+                
+                # Ensure model is in training mode for gradient computation
+                if not self.q_network.training:
+                    if self.logger:
+                        self.logger.log("DQN Replay: Setting Q-network to training mode")
+                    self.q_network.train()
+                
+                # Try a simple forward pass with minimal logging
+                if self.logger:
+                    self.logger.log("DQN Replay: Calling q_network.forward()...")
+                
+                # Forward pass for current Q-values (needs gradients for training)
                 current_outputs = self.q_network(states)
+                
                 if self.logger:
                     self.logger.log("DQN Replay: Neural network forward pass completed successfully")
+                    
             except Exception as forward_error:
                 if self.logger:
                     self.logger.error(f"DQN Replay: Neural network forward pass failed: {forward_error}")
