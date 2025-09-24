@@ -769,10 +769,6 @@ class MovementBasedBot:
                         action.card_identity = "unknown"
                 
                 results['action'] = action
-                
-                # Store for training
-                if self.config.save_training_data:
-                    self._store_training_data(game_state, action)
             else:
                 # Fallback: Intelligent action system if DQN not available
                 if self.emulator and self.frame_count % 60 == 0:  # Every 2 seconds at 30fps
@@ -800,6 +796,10 @@ class MovementBasedBot:
             self.previous_game_state = self.current_game_state
             self.current_game_state = game_state
             self.last_action = action
+            
+            # Store for training (after state updates)
+            if self.config.save_training_data and action is not None:
+                self._store_training_data(game_state, action)
             
         except Exception as e:
             self.logger.error(f"Error processing frame: {e}")
@@ -993,9 +993,11 @@ class MovementBasedBot:
             }
             
             self.training_data.append(training_data)
+            self.logger.log(f"Training data collected: {len(self.training_data)}/32 items")
             
             # Train DQN
             if len(self.training_data) >= 32:  # Batch size
+                self.logger.log(f"Training trigger reached: {len(self.training_data)} >= 32, calling _train_dqn()")
                 self._train_dqn()
     
     def _calculate_reward(self, current_state: GameState, previous_state: GameState, action: GameAction = None) -> GameReward:
