@@ -510,37 +510,88 @@ class DQNAgent:
             self.logger.log(f"DQN Replay: Sampled batch of {len(batch)} experiences")
         
         # Prepare batch data
-        states = torch.stack([exp[0].to_tensor() for exp in batch]).to(self.device)
+        if self.logger:
+            self.logger.log(f"DQN Replay: Preparing batch data...")
+        
+        try:
+            states = torch.stack([exp[0].to_tensor() for exp in batch]).to(self.device)
+            if self.logger:
+                self.logger.log(f"DQN Replay: States tensor created, shape: {states.shape}")
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"DQN Replay: Error creating states tensor: {e}")
+                import traceback
+                self.logger.error(f"DQN Replay: States tensor error traceback: {traceback.format_exc()}")
+            return 0.0
         
         # Convert actions to action indices and positions
-        action_indices = []
-        target_positions = []
-        for exp in batch:
-            action = exp[1]
-            if action.action_type == "wait":
-                action_indices.append(0)  # Wait action is index 0
-                target_positions.append([0.5, 0.5])  # Neutral position for wait
-            else:  # play_card
-                action_indices.append(action.card_index + 1)  # Card actions are indices 1-4
-                target_positions.append([action.position[0], action.position[1]])
+        if self.logger:
+            self.logger.log(f"DQN Replay: Converting actions...")
         
-        actions = torch.LongTensor(action_indices).to(self.device)
-        target_positions = torch.FloatTensor(target_positions).to(self.device)
+        try:
+            action_indices = []
+            target_positions = []
+            for i, exp in enumerate(batch):
+                action = exp[1]
+                if action.action_type == "wait":
+                    action_indices.append(0)  # Wait action is index 0
+                    target_positions.append([0.5, 0.5])  # Neutral position for wait
+                else:  # play_card
+                    action_indices.append(action.card_index + 1)  # Card actions are indices 1-4
+                    target_positions.append([action.position[0], action.position[1]])
+            
+            actions = torch.LongTensor(action_indices).to(self.device)
+            target_positions = torch.FloatTensor(target_positions).to(self.device)
+            
+            if self.logger:
+                self.logger.log(f"DQN Replay: Actions converted, actions shape: {actions.shape}, positions shape: {target_positions.shape}")
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"DQN Replay: Error converting actions: {e}")
+                import traceback
+                self.logger.error(f"DQN Replay: Actions error traceback: {traceback.format_exc()}")
+            return 0.0
         
         # Combine all reward components with importance weighting
-        total_rewards = torch.FloatTensor([
-            exp[2].immediate_reward * 2.0 +  # Higher weight for immediate rewards
-            exp[2].placement_reward + 
-            exp[2].detection_reward * 1.5 +  # Higher weight for detection
-            exp[2].elixir_efficiency_reward + 
-            exp[2].wait_reward +
-            exp[2].elixir_spilling_penalty * 3.0 +  # Strong penalty for elixir spilling
-            exp[2].battle_speed_reward * 2.0  # High reward for fast wins
-            for exp in batch
-        ]).to(self.device)
+        if self.logger:
+            self.logger.log(f"DQN Replay: Processing rewards...")
         
-        next_states = torch.stack([exp[3].to_tensor() for exp in batch]).to(self.device)
-        dones = torch.BoolTensor([exp[4] for exp in batch]).to(self.device)
+        try:
+            total_rewards = torch.FloatTensor([
+                exp[2].immediate_reward * 2.0 +  # Higher weight for immediate rewards
+                exp[2].placement_reward + 
+                exp[2].detection_reward * 1.5 +  # Higher weight for detection
+                exp[2].elixir_efficiency_reward + 
+                exp[2].wait_reward +
+                exp[2].elixir_spilling_penalty * 3.0 +  # Strong penalty for elixir spilling
+                exp[2].battle_speed_reward * 2.0  # High reward for fast wins
+                for exp in batch
+            ]).to(self.device)
+            
+            if self.logger:
+                self.logger.log(f"DQN Replay: Rewards processed, shape: {total_rewards.shape}")
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"DQN Replay: Error processing rewards: {e}")
+                import traceback
+                self.logger.error(f"DQN Replay: Rewards error traceback: {traceback.format_exc()}")
+            return 0.0
+        
+        if self.logger:
+            self.logger.log(f"DQN Replay: Processing next states and dones...")
+        
+        try:
+            next_states = torch.stack([exp[3].to_tensor() for exp in batch]).to(self.device)
+            dones = torch.BoolTensor([exp[4] for exp in batch]).to(self.device)
+            
+            if self.logger:
+                self.logger.log(f"DQN Replay: Next states shape: {next_states.shape}, dones shape: {dones.shape}")
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"DQN Replay: Error processing next states: {e}")
+                import traceback
+                self.logger.error(f"DQN Replay: Next states error traceback: {traceback.format_exc()}")
+            return 0.0
         
         # Current Q values
         current_outputs = self.q_network(states)
