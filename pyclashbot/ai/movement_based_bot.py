@@ -326,7 +326,8 @@ class MovementBasedBot:
                 try:
                     self.tower_health_detector = TowerHealthDetector(
                         screen_width=self.state_processor.screen_width,
-                        screen_height=self.state_processor.screen_height
+                        screen_height=self.state_processor.screen_height,
+                        logger=self.logger
                     )
                     self.logger.log("Tower health detector initialized successfully")
                     components_initialized += 1
@@ -1250,8 +1251,14 @@ class MovementBasedBot:
             
             # Perform training step
             self.logger.log("Calling dqn_agent.replay()...")
-            loss = self.dqn_agent.replay()
-            self.logger.log(f"Replay completed, loss: {loss}")
+            try:
+                loss = self.dqn_agent.replay()
+                self.logger.log(f"Replay completed successfully, loss: {loss}")
+            except Exception as replay_error:
+                self.logger.error(f"Replay method failed: {replay_error}")
+                import traceback
+                self.logger.error(f"Replay error traceback: {traceback.format_exc()}")
+                return
             
             # Get training stats after training
             self.logger.log("Getting training stats...")

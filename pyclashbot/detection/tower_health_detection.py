@@ -23,10 +23,11 @@ class TowerHealth:
 class TowerHealthDetector:
     """Detects tower health using OCR and template matching."""
     
-    def __init__(self, screen_width: int = 419, screen_height: int = 633):
+    def __init__(self, screen_width: int = 419, screen_height: int = 633, logger=None):
         """Initialize tower health detector."""
         self.screen_width = screen_width
         self.screen_height = screen_height
+        self.logger = logger
         
         # Tower health regions based on normalized coordinates (0-1 range)
         # These are approximate positions for Clash Royale towers
@@ -123,7 +124,14 @@ class TowerHealthDetector:
         x2 = max(x1 + 1, min(x2, width))
         y2 = max(y1 + 1, min(y2, height))
         
-        return frame[y1:y2, x1:x2]
+        if self.logger:
+            self.logger.log(f"Tower Health Debug: {region_name} region: ({x1},{y1}) to ({x2},{y2}), size: {x2-x1}x{y2-y1}")
+        
+        region = frame[y1:y2, x1:x2]
+        if self.logger:
+            self.logger.log(f"Tower Health Debug: {region_name} extracted region shape: {region.shape}")
+        
+        return region
     
     def detect_health_bar(self, region: np.ndarray) -> Optional[float]:
         """
@@ -350,12 +358,17 @@ class TowerHealthDetector:
                     detected_count += 1
                     
                     # Debug logging
-                    print(f"Tower Health Debug: {region_name} = {health_value} (confidence: {confidence:.2f})")
+                    if self.logger:
+                        self.logger.log(f"Tower Health Debug: {region_name} = {health_value} (confidence: {confidence:.2f})")
                 else:
-                    print(f"Tower Health Debug: {region_name} = No detection")
+                    if self.logger:
+                        self.logger.log(f"Tower Health Debug: {region_name} = No detection")
                     
             except Exception as e:
-                print(f"Tower Health Debug: Error detecting {region_name}: {e}")
+                if self.logger:
+                    self.logger.error(f"Tower Health Debug: Error detecting {region_name}: {e}")
+                    import traceback
+                    self.logger.error(f"Tower Health Debug: Traceback: {traceback.format_exc()}")
         
         # Calculate overall confidence
         if detected_count > 0:
@@ -363,7 +376,8 @@ class TowerHealthDetector:
         
         tower_health.timestamp = cv2.getTickCount() / cv2.getTickFrequency()
         
-        print(f"Tower Health Debug: Overall confidence: {tower_health.confidence:.2f}, Detected: {detected_count}/4")
+        if self.logger:
+            self.logger.log(f"Tower Health Debug: Overall confidence: {tower_health.confidence:.2f}, Detected: {detected_count}/4")
         
         return tower_health
     
