@@ -722,6 +722,9 @@ class MovementBasedBot:
                         tower_health.enemy_left_tower_health or 100,
                         tower_health.enemy_right_tower_health or 100
                     ]
+                    self.logger.log(f"Tower Health Debug: Detected values: {tower_health_values}")
+                else:
+                    self.logger.log("Tower Health Debug: No tower health detected, using defaults")
                 
                 # Process game state
                 game_state = self.state_processor.process_game_state(
@@ -1197,40 +1200,78 @@ class MovementBasedBot:
         return exponential_reward
     
     def _train_dqn(self):
-        """Train the DQN agent."""
-        if not self.dqn_agent or len(self.training_data) < 32:
-            self.logger.log(f"Training skipped: dqn_agent={self.dqn_agent is not None}, training_data={len(self.training_data)}")
+        """Train the DQN agent with comprehensive debugging."""
+        self.logger.log("=== DQN TRAINING DEBUG START ===")
+        
+        # Check prerequisites
+        if not self.dqn_agent:
+            self.logger.log("Training skipped: dqn_agent is None")
             return
+        
+        if len(self.training_data) < 32:
+            self.logger.log(f"Training skipped: training_data={len(self.training_data)} < 32")
+            return
+        
+        self.logger.log(f"Training prerequisites met: dqn_agent exists, training_data={len(self.training_data)}")
         
         try:
             # Sample batch from training data
             batch = self.training_data[-32:]  # Use last 32 experiences
+            self.logger.log(f"Sampled batch of {len(batch)} experiences")
             
-            self.logger.log(f"Training DQN with {len(batch)} experiences, DQN memory size: {len(self.dqn_agent.memory)}")
+            # Check DQN memory before adding
+            initial_memory_size = len(self.dqn_agent.memory)
+            self.logger.log(f"DQN memory before adding: {initial_memory_size}")
             
             # Train on batch - add experiences to DQN memory
-            for data in batch:
-                self.dqn_agent.remember(
-                    data['state'],
-                    data['action'],
-                    data['reward'],  # This is a GameReward object
-                    data['next_state'],
-                    data['done']
-                )
+            added_count = 0
+            for i, data in enumerate(batch):
+                try:
+                    self.dqn_agent.remember(
+                        data['state'],
+                        data['action'],
+                        data['reward'],  # This is a GameReward object
+                        data['next_state'],
+                        data['done']
+                    )
+                    added_count += 1
+                except Exception as e:
+                    self.logger.error(f"Error adding experience {i}: {e}")
+                    self.logger.error(f"Data structure: state={type(data['state'])}, action={type(data['action'])}, reward={type(data['reward'])}")
             
-            self.logger.log(f"After adding experiences, DQN memory size: {len(self.dqn_agent.memory)}")
+            # Check DQN memory after adding
+            final_memory_size = len(self.dqn_agent.memory)
+            self.logger.log(f"Added {added_count} experiences, DQN memory: {initial_memory_size} -> {final_memory_size}")
+            
+            # Check if we have enough data for training
+            if final_memory_size < 32:
+                self.logger.log(f"Not enough memory for training: {final_memory_size} < 32")
+                return
             
             # Perform training step
+            self.logger.log("Calling dqn_agent.replay()...")
             loss = self.dqn_agent.replay()
+            self.logger.log(f"Replay completed, loss: {loss}")
             
             # Get training stats after training
+            self.logger.log("Getting training stats...")
             stats = self.dqn_agent.get_training_stats()
-            self.logger.log(f"DQN Training - Loss: {loss:.4f}, Epsilon: {stats['epsilon']:.3f}, Training Step: {stats['training_step']}")
+            self.logger.log(f"Training stats retrieved: {stats}")
+            
+            # Log comprehensive training results
+            self.logger.log(f"=== DQN TRAINING RESULTS ===")
+            self.logger.log(f"Loss: {loss:.6f}")
+            self.logger.log(f"Epsilon: {stats.get('epsilon', 'N/A'):.6f}")
+            self.logger.log(f"Training Step: {stats.get('training_step', 'N/A')}")
+            self.logger.log(f"Memory Size: {final_memory_size}")
+            self.logger.log(f"=== DQN TRAINING DEBUG END ===")
             
         except Exception as e:
+            self.logger.error(f"=== DQN TRAINING ERROR ===")
             self.logger.error(f"Error training DQN: {e}")
             import traceback
             self.logger.error(f"Training error traceback: {traceback.format_exc()}")
+            self.logger.error(f"=== DQN TRAINING ERROR END ===")
     
     def _create_visualization(self, frame: np.ndarray, results: Dict) -> np.ndarray:
         """Create visualization of bot processing results."""

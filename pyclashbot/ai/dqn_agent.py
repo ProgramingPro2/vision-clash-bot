@@ -496,11 +496,18 @@ class DQNAgent:
         Returns:
             Training loss
         """
+        if self.logger:
+            self.logger.log(f"DQN Replay: Memory size {len(self.memory)}, batch_size {self.batch_size}")
+        
         if len(self.memory) < self.batch_size:
+            if self.logger:
+                self.logger.log(f"DQN Replay: Not enough memory ({len(self.memory)} < {self.batch_size}), returning 0.0")
             return 0.0
         
         # Sample batch with priority-based sampling
         batch = self.memory.sample(self.batch_size)
+        if self.logger:
+            self.logger.log(f"DQN Replay: Sampled batch of {len(batch)} experiences")
         
         # Prepare batch data
         states = torch.stack([exp[0].to_tensor() for exp in batch]).to(self.device)
@@ -568,17 +575,18 @@ class DQNAgent:
                 target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
         
         # Adaptive epsilon decay
+        old_epsilon = self.epsilon
         if self.epsilon > self.epsilon_min:
             # Slower decay for better exploration
             self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
         
         self.loss_history.append(total_loss.item())
         
-        # Log training progress periodically
-        if self.training_step % 100 == 0 and self.logger:
-            self.logger.log(f"DQN Training - Step: {self.training_step}, Total Loss: {total_loss.item():.4f}, "
-                          f"Action Loss: {action_loss.item():.4f}, Position Loss: {position_loss.item():.4f}, "
-                          f"Epsilon: {self.epsilon:.3f}")
+        # Always log training progress for debugging
+        if self.logger:
+            self.logger.log(f"DQN Replay Results - Step: {self.training_step}, Loss: {total_loss.item():.6f}, "
+                          f"Action Loss: {action_loss.item():.6f}, Position Loss: {position_loss.item():.6f}, "
+                          f"Epsilon: {old_epsilon:.6f} -> {self.epsilon:.6f}")
         
         return total_loss.item()
     
