@@ -594,52 +594,81 @@ class DQNAgent:
             return 0.0
         
         # Current Q values
-        current_outputs = self.q_network(states)
-        current_action_q = current_outputs[:, :5].gather(1, actions.unsqueeze(1))
-        current_positions = current_outputs[:, 5:7]
-        
-        # Next Q values from target network
-        with torch.no_grad():
-            next_outputs = self.target_network(next_states)
-            next_q_values = next_outputs[:, :5].max(1)[0]
-            target_q_values = total_rewards + (self.gamma * next_q_values * ~dones)
-        
-        # Compute losses
-        action_loss = F.mse_loss(current_action_q.squeeze(), target_q_values)
-        position_loss = F.mse_loss(current_positions, target_positions)
-        
-        # Combined loss with weighting
-        total_loss = action_loss + 0.1 * position_loss  # Position loss is less important
-        
-        # Optimize with gradient clipping
-        self.optimizer.zero_grad()
-        total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=1.0)
-        self.optimizer.step()
+        try:
+            if self.logger:
+                self.logger.log("DQN Replay: Computing current Q values...")
+            current_outputs = self.q_network(states)
+            current_action_q = current_outputs[:, :5].gather(1, actions.unsqueeze(1))
+            current_positions = current_outputs[:, 5:7]
+            
+            if self.logger:
+                self.logger.log("DQN Replay: Computing target Q values...")
+            # Next Q values from target network
+            with torch.no_grad():
+                next_outputs = self.target_network(next_states)
+                next_q_values = next_outputs[:, :5].max(1)[0]
+                target_q_values = total_rewards + (self.gamma * next_q_values * ~dones)
+            
+            if self.logger:
+                self.logger.log("DQN Replay: Computing losses...")
+            # Compute losses
+            action_loss = F.mse_loss(current_action_q.squeeze(), target_q_values)
+            position_loss = F.mse_loss(current_positions, target_positions)
+            
+            # Combined loss with weighting
+            total_loss = action_loss + 0.1 * position_loss  # Position loss is less important
+            
+            if self.logger:
+                self.logger.log("DQN Replay: Performing optimization step...")
+            # Optimize with gradient clipping
+            self.optimizer.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=1.0)
+            self.optimizer.step()
+            
+            if self.logger:
+                self.logger.log("DQN Replay: Optimization completed successfully")
+                
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"DQN Replay: Error during neural network training: {e}")
+                import traceback
+                self.logger.error(f"DQN Replay: Training error traceback: {traceback.format_exc()}")
+            return 0.0
         
         # Update target network with soft update
-        self.training_step += 1
-        if self.training_step % self.target_update_freq == 0:
-            # Soft update instead of hard copy
-            tau = 0.005  # Soft update rate
-            for target_param, local_param in zip(self.target_network.parameters(), self.q_network.parameters()):
-                target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
-        
-        # Adaptive epsilon decay
-        old_epsilon = self.epsilon
-        if self.epsilon > self.epsilon_min:
-            # Slower decay for better exploration
-            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
-        
-        self.loss_history.append(total_loss.item())
-        
-        # Always log training progress for debugging
-        if self.logger:
-            self.logger.log(f"DQN Replay Results - Step: {self.training_step}, Loss: {total_loss.item():.6f}, "
-                          f"Action Loss: {action_loss.item():.6f}, Position Loss: {position_loss.item():.6f}, "
-                          f"Epsilon: {old_epsilon:.6f} -> {self.epsilon:.6f}")
-        
-        return total_loss.item()
+        try:
+            if self.logger:
+                self.logger.log("DQN Replay: Updating training step and target network...")
+            self.training_step += 1
+            if self.training_step % self.target_update_freq == 0:
+                # Soft update instead of hard copy
+                tau = 0.005  # Soft update rate
+                for target_param, local_param in zip(self.target_network.parameters(), self.q_network.parameters()):
+                    target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
+            
+            # Adaptive epsilon decay
+            old_epsilon = self.epsilon
+            if self.epsilon > self.epsilon_min:
+                # Slower decay for better exploration
+                self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+            
+            self.loss_history.append(total_loss.item())
+            
+            # Always log training progress for debugging
+            if self.logger:
+                self.logger.log(f"DQN Replay Results - Step: {self.training_step}, Loss: {total_loss.item():.6f}, "
+                              f"Action Loss: {action_loss.item():.6f}, Position Loss: {position_loss.item():.6f}, "
+                              f"Epsilon: {old_epsilon:.6f} -> {self.epsilon:.6f}")
+            
+            return total_loss.item()
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"DQN Replay: Error during post-training updates: {e}")
+                import traceback
+                self.logger.error(f"DQN Replay: Post-training error traceback: {traceback.format_exc()}")
+            return 0.0
     
     def calculate_placement_reward(self, action: GameAction) -> float:
         """Calculate reward for successful card placement."""
