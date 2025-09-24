@@ -1255,6 +1255,9 @@ class MovementBasedBot:
             self.logger.log("Calling dqn_agent.replay()...")
             try:
                 loss = self.dqn_agent.replay()
+                if loss == 0.0:
+                    self.logger.error("Replay method returned 0.0 - training failed silently!")
+                    return
                 self.logger.log(f"Replay completed successfully, loss: {loss}")
             except Exception as replay_error:
                 self.logger.error(f"Replay method failed: {replay_error}")

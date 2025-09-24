@@ -614,7 +614,11 @@ class DQNAgent:
                 return 0.0
             
             try:
+                if self.logger:
+                    self.logger.log("DQN Replay: About to call q_network forward pass...")
                 current_outputs = self.q_network(states)
+                if self.logger:
+                    self.logger.log("DQN Replay: Neural network forward pass completed successfully")
             except Exception as forward_error:
                 if self.logger:
                     self.logger.error(f"DQN Replay: Neural network forward pass failed: {forward_error}")
