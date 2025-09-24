@@ -44,7 +44,7 @@ class MovementBotSettings:
     
     # DQN settings
     dqn_enabled: bool = True
-    state_size: int = 200
+    state_size: int = 130  # 20 units × 6 features + 1 elixir + 4 tower health + 1 time + 4 cards = 130
     action_size: int = 7  # 1 wait + 4 cards + 2 position outputs
     hidden_sizes: list = field(default_factory=lambda: [512, 256, 128])
     learning_rate: float = 0.001
