@@ -99,15 +99,13 @@ class DQNNetwork(nn.Module):
         """
         super(DQNNetwork, self).__init__()
         
-        # Simplified network architecture to fix hanging issue
-        # Use much simpler architecture: just 2 linear layers with ReLU
+        # MINIMAL network architecture to fix hanging issue
+        # Use absolute minimal architecture: just 1 linear layer
         self.main_network = nn.Sequential(
-            nn.Linear(input_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Linear(input_size, 64),
             nn.ReLU()
         )
-        prev_size = 128
+        prev_size = 64
         
         # Separate heads for different action types
         self.action_head = nn.Linear(prev_size, 5)  # wait + 4 cards
