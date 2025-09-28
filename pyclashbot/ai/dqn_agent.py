@@ -99,19 +99,15 @@ class DQNNetwork(nn.Module):
         """
         super(DQNNetwork, self).__init__()
         
-        # Main network layers (removed BatchNorm to fix hanging issue)
-        layers = []
-        prev_size = input_size
-        
-        for i, hidden_size in enumerate(hidden_sizes):
-            layers.extend([
-                nn.Linear(prev_size, hidden_size),
-                nn.ReLU(),
-                nn.Dropout(0.1 if i < len(hidden_sizes) - 1 else 0.2)  # Less dropout in early layers
-            ])
-            prev_size = hidden_size
-        
-        self.main_network = nn.Sequential(*layers)
+        # Simplified network architecture to fix hanging issue
+        # Use much simpler architecture: just 2 linear layers with ReLU
+        self.main_network = nn.Sequential(
+            nn.Linear(input_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU()
+        )
+        prev_size = 128
         
         # Separate heads for different action types
         self.action_head = nn.Linear(prev_size, 5)  # wait + 4 cards
