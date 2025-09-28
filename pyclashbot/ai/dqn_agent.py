@@ -99,17 +99,13 @@ class DQNNetwork(nn.Module):
         """
         super(DQNNetwork, self).__init__()
         
-        # Input normalization
-        self.input_norm = nn.BatchNorm1d(input_size)
-        
-        # Main network layers
+        # Main network layers (removed BatchNorm to fix hanging issue)
         layers = []
         prev_size = input_size
         
         for i, hidden_size in enumerate(hidden_sizes):
             layers.extend([
                 nn.Linear(prev_size, hidden_size),
-                nn.BatchNorm1d(hidden_size),
                 nn.ReLU(),
                 nn.Dropout(0.1 if i < len(hidden_sizes) - 1 else 0.2)  # Less dropout in early layers
             ])
@@ -134,10 +130,7 @@ class DQNNetwork(nn.Module):
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the network."""
-        # Normalize input
-        x = self.input_norm(x)
-        
-        # Main network
+        # Main network (removed input normalization to fix hanging issue)
         features = self.main_network(x)
         
         # Separate heads
