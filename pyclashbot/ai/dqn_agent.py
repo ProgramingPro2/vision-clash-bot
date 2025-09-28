@@ -622,15 +622,25 @@ class DQNAgent:
                         self.logger.log("DQN Replay: Setting Q-network to training mode")
                     self.q_network.train()
                 
-                # Try a simple forward pass with minimal logging
+                # Try a simple forward pass with SUPER detailed logging
                 if self.logger:
-                    self.logger.log("DQN Replay: Calling q_network.forward()...")
+                    self.logger.log("DQN Replay: STEP 1 - About to call q_network.forward()...")
+                    self.logger.log(f"DQN Replay: STEP 1 - Input states shape: {states.shape}")
+                    self.logger.log(f"DQN Replay: STEP 1 - Input states dtype: {states.dtype}")
+                    self.logger.log(f"DQN Replay: STEP 1 - Input states device: {states.device}")
+                    self.logger.log(f"DQN Replay: STEP 1 - Network training mode: {self.q_network.training}")
                 
                 # Forward pass for current Q-values (needs gradients for training)
+                if self.logger:
+                    self.logger.log("DQN Replay: STEP 2 - Calling q_network.forward() NOW...")
+                
                 current_outputs = self.q_network(states)
                 
                 if self.logger:
-                    self.logger.log("DQN Replay: Neural network forward pass completed successfully")
+                    self.logger.log("DQN Replay: STEP 3 - Neural network forward pass completed successfully!")
+                    self.logger.log(f"DQN Replay: STEP 3 - Output shape: {current_outputs.shape}")
+                    self.logger.log(f"DQN Replay: STEP 3 - Output dtype: {current_outputs.dtype}")
+                    self.logger.log(f"DQN Replay: STEP 3 - Output device: {current_outputs.device}")
                     
             except Exception as forward_error:
                 if self.logger:
@@ -640,44 +650,92 @@ class DQNAgent:
                 return 0.0
             
             if self.logger:
-                self.logger.log(f"DQN Replay: Current outputs shape: {current_outputs.shape}")
+                self.logger.log("DQN Replay: STEP 4 - Processing forward pass outputs...")
+                self.logger.log(f"DQN Replay: STEP 4 - Current outputs shape: {current_outputs.shape}")
             
             # Check for NaN or inf values in output
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 5 - Checking for NaN or inf values...")
+            
             if torch.isnan(current_outputs).any() or torch.isinf(current_outputs).any():
                 if self.logger:
-                    self.logger.error("DQN Replay: Q-network output contains NaN or inf values!")
+                    self.logger.error("DQN Replay: STEP 5 - Q-network output contains NaN or inf values!")
                 return 0.0
+            
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 5 - No NaN or inf values found, continuing...")
+            
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 6 - Extracting action Q-values and positions...")
             
             current_action_q = current_outputs[:, :5].gather(1, actions.unsqueeze(1))
             current_positions = current_outputs[:, 5:7]
             
             if self.logger:
-                self.logger.log("DQN Replay: Computing target Q values...")
+                self.logger.log(f"DQN Replay: STEP 6 - current_action_q shape: {current_action_q.shape}")
+                self.logger.log(f"DQN Replay: STEP 6 - current_positions shape: {current_positions.shape}")
+            
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 7 - Computing target Q values...")
             # Next Q values from target network
             with torch.no_grad():
+                if self.logger:
+                    self.logger.log("DQN Replay: STEP 7 - Calling target_network.forward()...")
                 next_outputs = self.target_network(next_states)
+                if self.logger:
+                    self.logger.log(f"DQN Replay: STEP 7 - Target network output shape: {next_outputs.shape}")
+                
                 next_q_values = next_outputs[:, :5].max(1)[0]
+                if self.logger:
+                    self.logger.log(f"DQN Replay: STEP 7 - next_q_values shape: {next_q_values.shape}")
+                
                 target_q_values = total_rewards + (self.gamma * next_q_values * ~dones)
+                if self.logger:
+                    self.logger.log(f"DQN Replay: STEP 7 - target_q_values shape: {target_q_values.shape}")
             
             if self.logger:
-                self.logger.log("DQN Replay: Computing losses...")
+                self.logger.log("DQN Replay: STEP 8 - Computing losses...")
             # Compute losses
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 8 - Computing action loss...")
             action_loss = F.mse_loss(current_action_q.squeeze(), target_q_values)
+            if self.logger:
+                self.logger.log(f"DQN Replay: STEP 8 - action_loss: {action_loss.item()}")
+            
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 8 - Computing position loss...")
             position_loss = F.mse_loss(current_positions, target_positions)
+            if self.logger:
+                self.logger.log(f"DQN Replay: STEP 8 - position_loss: {position_loss.item()}")
             
             # Combined loss with weighting
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 8 - Computing total loss...")
             total_loss = action_loss + 0.1 * position_loss  # Position loss is less important
+            if self.logger:
+                self.logger.log(f"DQN Replay: STEP 8 - total_loss: {total_loss.item()}")
             
             if self.logger:
-                self.logger.log("DQN Replay: Performing optimization step...")
+                self.logger.log("DQN Replay: STEP 9 - Performing optimization step...")
             # Optimize with gradient clipping
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 9 - Zeroing gradients...")
             self.optimizer.zero_grad()
+            
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 9 - Calling backward()...")
             total_loss.backward()
+            
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 9 - Clipping gradients...")
             torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=1.0)
+            
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 9 - Calling optimizer.step()...")
             self.optimizer.step()
             
             if self.logger:
-                self.logger.log("DQN Replay: Optimization completed successfully")
+                self.logger.log("DQN Replay: STEP 9 - Optimization completed successfully!")
                 
         except Exception as e:
             if self.logger:
@@ -689,24 +747,52 @@ class DQNAgent:
         # Update target network with soft update
         try:
             if self.logger:
-                self.logger.log("DQN Replay: Updating training step and target network...")
+                self.logger.log("DQN Replay: STEP 10 - Updating training step and target network...")
+            
+            if self.logger:
+                self.logger.log(f"DQN Replay: STEP 10 - Current training_step: {self.training_step}")
             self.training_step += 1
+            if self.logger:
+                self.logger.log(f"DQN Replay: STEP 10 - New training_step: {self.training_step}")
+            
             if self.training_step % self.target_update_freq == 0:
+                if self.logger:
+                    self.logger.log("DQN Replay: STEP 10 - Updating target network (soft update)...")
                 # Soft update instead of hard copy
                 tau = 0.005  # Soft update rate
                 for target_param, local_param in zip(self.target_network.parameters(), self.q_network.parameters()):
                     target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
+                if self.logger:
+                    self.logger.log("DQN Replay: STEP 10 - Target network updated successfully")
+            else:
+                if self.logger:
+                    self.logger.log(f"DQN Replay: STEP 10 - Skipping target network update (step {self.training_step} % {self.target_update_freq} != 0)")
             
             # Adaptive epsilon decay
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 11 - Updating epsilon...")
             old_epsilon = self.epsilon
+            if self.logger:
+                self.logger.log(f"DQN Replay: STEP 11 - Old epsilon: {old_epsilon:.6f}")
+            
             if self.epsilon > self.epsilon_min:
+                if self.logger:
+                    self.logger.log(f"DQN Replay: STEP 11 - Epsilon > epsilon_min, decaying...")
                 # Slower decay for better exploration
                 self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+                if self.logger:
+                    self.logger.log(f"DQN Replay: STEP 11 - New epsilon: {self.epsilon:.6f}")
+            else:
+                if self.logger:
+                    self.logger.log(f"DQN Replay: STEP 11 - Epsilon already at minimum ({self.epsilon_min:.6f})")
             
+            if self.logger:
+                self.logger.log("DQN Replay: STEP 12 - Adding loss to history...")
             self.loss_history.append(total_loss.item())
             
             # Always log training progress for debugging
             if self.logger:
+                self.logger.log("DQN Replay: STEP 13 - FINAL SUCCESS - Training completed!")
                 self.logger.log(f"DQN Replay Results - Step: {self.training_step}, Loss: {total_loss.item():.6f}, "
                               f"Action Loss: {action_loss.item():.6f}, Position Loss: {position_loss.item():.6f}, "
                               f"Epsilon: {old_epsilon:.6f} -> {self.epsilon:.6f}")
